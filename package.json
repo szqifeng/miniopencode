@@ -1,0 +1,19 @@
+{
+  "name": "miniopencode",
+  "version": "1.0.0",
+  "description": "MiniOpenCode - Text Summarization & Classification API",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^3.0.63",
+    "@anthropic-ai/sdk": "^0.30.0",
+    "ai": "^6.0.134",
+    "dotenv": "^16.4.0",
+    "express": "^4.18.2",
+    "uuid": "^9.0.0"
+  }
+}

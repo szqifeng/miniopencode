@@ -1,0 +1,167 @@
+{
+  "info": {
+    "name": "OneMindBack API",
+    "description": "一念后端 API - 文本总结与分类服务",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:3000" },
+    { "key": "apiKey", "value": "om_fixed_api_key_12345" }
+  ],
+  "item": [
+    {
+      "name": "健康检查",
+      "request": {
+        "method": "GET",
+        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
+      }
+    },
+    {
+      "name": "文本总结",
+      "item": [
+        {
+          "name": "Direct - POST /api/summarize",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/summarize", "host": ["{{baseUrl}}"], "path": ["api", "summarize"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"人工智能是计算机科学的一个重要分支。\"\n}" }
+          }
+        },
+        {
+          "name": "Direct Stream - POST /api/summarize/stream",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/summarize/stream", "host": ["{{baseUrl}}"], "path": ["api", "summarize", "stream"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"人工智能是计算机科学的一个重要分支。\"\n}" }
+          }
+        },
+        {
+          "name": "AI SDK - POST /api/sdk/summarize",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/sdk/summarize", "host": ["{{baseUrl}}"], "path": ["api", "sdk", "summarize"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"人工智能是计算机科学的一个重要分支。\"\n}" }
+          }
+        },
+        {
+          "name": "AI SDK Stream - POST /api/sdk/summarize/stream",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/sdk/summarize/stream", "host": ["{{baseUrl}}"], "path": ["api", "sdk", "summarize", "stream"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"人工智能是计算机科学的一个重要分支。\"\n}" }
+          }
+        },
+        {
+          "name": "AI SDK Stream+Tools - POST /api/sdk/summarize/stream (useTools=true)",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/sdk/summarize/stream", "host": ["{{baseUrl}}"], "path": ["api", "sdk", "summarize", "stream"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"帮我查一下深圳的天气，然后总结一下人工智能。\",\n  \"useTools\": true\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "文本分类",
+      "item": [
+        {
+          "name": "Direct - POST /api/classify",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/classify", "host": ["{{baseUrl}}"], "path": ["api", "classify"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"苹果发布了新一代iPhone\",\n  \"categories\": [\"科技\", \"娱乐\", \"新闻\"]\n}" }
+          }
+        },
+        {
+          "name": "Direct Stream - POST /api/classify/stream",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/classify/stream", "host": ["{{baseUrl}}"], "path": ["api", "classify", "stream"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"苹果发布了新一代iPhone\",\n  \"categories\": [\"科技\", \"娱乐\", \"新闻\"]\n}" }
+          }
+        },
+        {
+          "name": "AI SDK - POST /api/sdk/classify",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/sdk/classify", "host": ["{{baseUrl}}"], "path": ["api", "sdk", "classify"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"苹果发布了新一代iPhone\",\n  \"categories\": [\"科技\", \"娱乐\", \"新闻\"]\n}" }
+          }
+        },
+        {
+          "name": "AI SDK Stream - POST /api/sdk/classify/stream",
+          "request": {
+            "method": "POST",
+            "url": { "raw": "{{baseUrl}}/api/sdk/classify/stream", "host": ["{{baseUrl}}"], "path": ["api", "sdk", "classify", "stream"] },
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"text\": \"苹果发布了新一代iPhone\",\n  \"categories\": [\"科技\", \"娱乐\", \"新闻\"]\n}" }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Records - 记录管理",
+      "item": [
+        {
+          "name": "GET /api/records",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/records?limit=20&offset=0", "host": ["{{baseUrl}}"], "path": ["api", "records"], "query": [{ "key": "limit", "value": "20" }, { "key": "offset", "value": "0" }] },
+            "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }]
+          }
+        },
+        {
+          "name": "GET /api/records/:id",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/records/:id", "host": ["{{baseUrl}}"], "path": ["api", "records", ":id"] },
+            "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }]
+          }
+        },
+        {
+          "name": "DELETE /api/records/:id",
+          "request": {
+            "method": "DELETE",
+            "url": { "raw": "{{baseUrl}}/api/records/:id", "host": ["{{baseUrl}}"], "path": ["api", "records", ":id"] },
+            "header": [{ "key": "X-API-Key", "value": "{{apiKey}}" }]
+          }
+        }
+      ]
+    }
+  ]
+}
