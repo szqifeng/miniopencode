@@ -2,6 +2,31 @@
 
 文本总结与分类 API 服务。
 
+## 项目结构
+
+```
+miniopencode/
+├── src/
+│   ├── app.js              # Express 应用入口
+│   ├── index.js            # 服务启动入口
+│   ├── middleware/
+│   │   └── auth.js         # API 认证中间件
+│   ├── models/
+│   │   └── textRecord.js    # 数据记录模型
+│   ├── routes/
+│   │   ├── api.js           # 主要 API 路由
+│   │   └── sdk.js           # SDK 兼容路由
+│   └── services/
+│       ├── aiService.js     # AI 服务封装
+│       ├── storageFactory.js # 存储抽象工厂
+│       └── toolService.js   # 工具服务（天气、计算等）
+├── tests/                   # 测试文件
+├── examples/                # 使用示例
+├── docs/                    # 文档
+├── package.json
+└── README.md
+```
+
 ## 技术栈
 
 - **运行时**: Node.js 22+
@@ -177,3 +202,7 @@ curl -X POST http://localhost:3000/api/classify \
 ### 删除记录
 
 **DELETE** `/api/records/:id`
+
+## 许可证
+
+MIT License
