@@ -7,24 +7,27 @@
 ```
 miniopencode/
 ├── src/
-│   ├── app.js              # Express 应用入口
-│   ├── index.js            # 服务启动入口
+│   ├── index.ts              # 服务启动入口
+│   ├── app.ts                # Express 应用入口
+│   ├── agent/
+│   │   ├── index.ts         # Agent 核心控制层
+│   │   ├── api.ts           # API 路由
+│   │   ├── llm.ts           # LLM 对话封装
+│   │   ├── process.ts       # React loop 执行
+│   │   ├── session.ts       # 会话管理
+│   │   └── types.ts         # 类型定义
 │   ├── middleware/
-│   │   └── auth.js         # API 认证中间件
+│   │   └── auth.ts          # API 认证中间件
 │   ├── models/
-│   │   └── textRecord.js    # 数据记录模型
-│   ├── routes/
-│   │   ├── api.js           # 主要 API 路由
-│   │   └── sdk.js           # SDK 兼容路由
+│   │   └── textRecord.ts    # 数据记录模型
 │   └── services/
-│       ├── aiService.js     # AI 服务封装
-│       ├── storageFactory.js # 存储抽象工厂
-│       └── toolService.js   # 工具服务（天气、计算等）
-├── tests/                   # 测试文件
-├── examples/                # 使用示例
-├── docs/                    # 文档
-├── package.json
-└── README.md
+│       ├── storageFactory.ts # 存储抽象工厂
+│       └── toolService.ts    # 工具服务
+├── tests/                    # 测试文件
+├── docs/                     # 文档
+├── postman_collection.json   # Postman 测试集合
+├── tsconfig.json            # TypeScript 配置
+└── package.json
 ```
 
 ## 开发环境
@@ -42,6 +45,9 @@ npm install
 
 # 启动开发服务器
 npm run dev
+
+# 类型检查
+npm run typecheck
 ```
 
 ## 如何贡献
@@ -65,7 +71,7 @@ npm run dev
 
 ### 代码规范
 
-- 使用 ES Module (ESM) 语法
+- 使用 TypeScript
 - 使用 async/await 而非回调
 - 添加适当的错误处理
 - 为新功能编写测试
@@ -74,7 +80,6 @@ npm run dev
 ### 分支策略
 
 - `main`: 稳定发布版本
-- `develop`: 开发分支
 - `feature/*`: 新功能
 - `fix/*`: Bug 修复
 - `docs/*`: 文档更新
@@ -83,61 +88,34 @@ npm run dev
 
 ### 添加新接口
 
-1. 在 `src/routes/api.js` 中添加路由
+1. 在 `src/agent/api.ts` 中添加路由
 2. 实现业务逻辑
-3. 统一错误处理格式：
-
-```javascript
-try {
-  // your code
-} catch (error) {
-  console.error('Your error:', error);
-  res.status(500).json({
-    error: 'Internal Server Error',
-    message: error.message || 'Failed to...'
-  });
-}
-```
+3. 统一错误处理格式
 
 ### 添加新工具
 
-在 `src/services/toolService.js` 的 `TOOLS` 数组中添加：
+在 `src/services/toolService.ts` 的 `TOOLS` 中添加：
 
-```javascript
-{
+```typescript
+const newTool = {
   id: 'tool_name',
   description: '工具描述',
-  inputSchema: jsonSchema({
-    type: 'object',
-    properties: {
-      paramName: {
-        type: 'string',
-        description: '参数描述'
-      }
-    },
-    required: ['paramName']
-  }),
-  async execute(args, options) {
+  inputSchema: jsonSchema({ ... }),
+  async execute(args) {
     // 工具执行逻辑
     return { output: '结果', title: '标题', metadata: {} };
   }
-}
+};
 ```
-
-### 添加新存储后端
-
-1. 在 `src/services/storageFactory.js` 中添加新存储类
-2. 实现标准接口：`save()`, `get()`, `list()`, `delete()`
-3. 在 `STORAGE_TYPE` 环境变量支持中添加新类型
 
 ## 测试
 
 ```bash
-# 运行测试
-npm test
+# 启动服务测试
+npm run dev
 
-# 运行带监视的测试
-npm run test:watch
+# 类型检查
+npm run typecheck
 ```
 
 ## 许可证
