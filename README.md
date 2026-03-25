@@ -4,7 +4,7 @@ AI Agent 服务，支持多轮对话和工具调用的流式对话。
 
 ## 架构图
 
-参考 [AIAgent架构图](docs/AIAgent架构图.md)
+![架构图](docs/AIAgent架构图.png)
 
 ```
 User → API → Agent → Process → LLM
