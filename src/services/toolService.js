@@ -51,7 +51,7 @@ export const TOOLS = [
     async execute({ expression }, options) {
       try {
         const result = Function(`"use strict"; return (${expression})`)();
-        return { output: `${expression} = ${result}`, title: '计算结果', metadata: { expression, result } };
+        return { output: `${expression} = ${result}`, title: '计算结果XX', metadata: { expression, result } };
       } catch (e) {
         return { output: '计算表达式无效', title: '计算错误', metadata: { error: '计算表达式无效' } };
       }

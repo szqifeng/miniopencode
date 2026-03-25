@@ -1,6 +1,16 @@
 # MiniOpenCode
 
-文本总结与分类 API 服务。
+AI Agent 服务，支持工具调用的流式对话。
+
+## 架构图
+
+参考 [AIAgent架构图](docs/AIAgent架构图.md)
+
+```
+User → Gateway → Agent → Process → LLM
+                      ↓
+                    Tools
+```
 
 ## 项目结构
 
@@ -9,20 +19,24 @@ miniopencode/
 ├── src/
 │   ├── app.js              # Express 应用入口
 │   ├── index.js            # 服务启动入口
+│   ├── agent/
+│   │   ├── index.js        # Agent 核心控制层
+│   │   ├── api.js          # API 路由
+│   │   ├── cli.js          # CLI 模块
+│   │   ├── llm.js          # LLM 对话封装
+│   │   ├── process.js      # React loop 执行
+│   │   └── ws.js           # WebSocket 模块
 │   ├── middleware/
 │   │   └── auth.js         # API 认证中间件
 │   ├── models/
-│   │   └── textRecord.js    # 数据记录模型
-│   ├── routes/
-│   │   ├── api.js           # 主要 API 路由
-│   │   └── sdk.js           # SDK 兼容路由
+│   │   └── textRecord.js   # 数据记录模型
 │   └── services/
-│       ├── aiService.js     # AI 服务封装
 │       ├── storageFactory.js # 存储抽象工厂
-│       └── toolService.js   # 工具服务（天气、计算等）
+│       └── toolService.js   # 工具服务
 ├── tests/                   # 测试文件
 ├── examples/                # 使用示例
 ├── docs/                    # 文档
+├── postman_collection.json   # Postman 测试集合
 ├── package.json
 └── README.md
 ```
@@ -87,91 +101,42 @@ X-API-Key: om_fixed_api_key_12345
 
 | 端点 | 方法 | 功能 |
 |------|------|------|
-| `/api/summarize` | POST | 文本总结 |
-| `/api/summarize/stream` | POST | 文本总结（流式） |
-| `/api/classify` | POST | 文本分类 |
-| `/api/classify/stream` | POST | 文本分类（流式） |
-| `/api/records` | GET | 获取历史记录列表 |
-| `/api/records/:id` | GET | 获取单条记录 |
-| `/api/records/:id` | DELETE | 删除记录 |
+| `/api/web/chat/stream` | POST | 流式对话（支持工具调用） |
 
-### 文本总结
+### 流式对话
 
-**POST** `/api/summarize`
+**POST** `/api/web/chat/stream`
 
 ```bash
-curl -X POST http://localhost:3000/api/summarize \
+curl -X POST http://localhost:3000/api/web/chat/stream \
   -H "Content-Type: application/json" \
   -H "X-API-Key: om_fixed_api_key_12345" \
-  -d '{"text": "人工智能是计算机科学的一个重要分支。"}'
+  -d '{"messages": [{"role": "user", "content": "深圳天气怎么样"}], "system": "你是助手", "useTools": true}'
 ```
 
 **Request Body:**
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| text | string | 是 | 要总结的文本内容 |
-| maxLength | number | 否 | 摘要最大长度，默认 200 |
+| messages | array | 是 | 对话消息列表 |
+| system | string | 否 | 系统提示词 |
 | useTools | boolean | 否 | 是否启用工具调用，默认 false |
 
-**Response:**
+**Response (SSE):**
 
-```json
-{
-  "id": "uuid",
-  "summary": "总结后的简短内容...",
-  "originalLength": 1000,
-  "operation": "summarize",
-  "createdAt": "2026-03-21T10:00:00.000Z"
-}
 ```
+data: {"type": "text-delta", "textDelta": "你"}
 
-### 文本总结（流式）
+data: {"type": "tool-call", "tool": "get_current_city", "args": {}}
 
-**POST** `/api/summarize/stream`
+data: {"type": "tool-result", "tool": "get_current_city", "result": {...}}
 
-```bash
-curl -X POST http://localhost:3000/api/summarize/stream \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: om_fixed_api_key_12345" \
-  -d '{"text": "要总结的长文本内容..."}'
-```
-
-### 文本分类
-
-**POST** `/api/classify`
-
-```bash
-curl -X POST http://localhost:3000/api/classify \
-  -H "Content-Type: application/json" \
-  -H "X-API-Key: om_fixed_api_key_12345" \
-  -d '{"text": "苹果发布了新一代iPhone", "categories": ["科技", "娱乐", "新闻"]}'
-```
-
-**Request Body:**
-
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| text | string | 是 | 待分类的文本内容 |
-| categories | string[] | 否 | 分类类别列表，默认 ["科技", "娱乐", "新闻", "生活", "其他"] |
-| useTools | boolean | 否 | 是否启用工具调用，默认 false |
-
-**Response:**
-
-```json
-{
-  "id": "uuid",
-  "predictedCategory": "科技",
-  "confidence": 0.95,
-  "categories": ["科技", "娱乐", "新闻"],
-  "operation": "classify",
-  "createdAt": "2026-03-21T10:05:00.000Z"
-}
+data: [DONE]
 ```
 
 ### 工具调用
 
-当 `useTools: true` 时，接口支持工具调用和链式调用功能。
+当 `useTools: true` 时，支持工具调用和链式调用功能。
 
 **可用工具：**
 
@@ -181,27 +146,6 @@ curl -X POST http://localhost:3000/api/classify \
 | `get_weather` | 获取指定城市的天气信息 | city (string) |
 | `calculate` | 执行数学计算 | expression (string) |
 | `get_date` | 获取当前日期和时间 | 无 |
-
-### 获取记录
-
-**GET** `/api/records?limit=20&offset=0`
-
-```json
-{
-  "records": [...],
-  "total": 50,
-  "limit": 20,
-  "offset": 0
-}
-```
-
-### 获取单条记录
-
-**GET** `/api/records/:id`
-
-### 删除记录
-
-**DELETE** `/api/records/:id`
 
 ## 许可证
 
