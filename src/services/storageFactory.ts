@@ -1,18 +1,28 @@
 export const STORAGE_TYPES = {
   FILE: 'file',
   MYSQL: 'mysql'
-};
+} as const;
 
-const STORAGE_TYPE = process.env.STORAGE_TYPE || STORAGE_TYPES.FILE;
+export type StorageType = typeof STORAGE_TYPES[keyof typeof STORAGE_TYPES];
 
-async function createFileStorage() {
+const STORAGE_TYPE: StorageType = (process.env.STORAGE_TYPE as StorageType) || STORAGE_TYPES.FILE;
+
+interface Storage {
+  save: (record: unknown) => Promise<unknown>;
+  get: (id: string) => Promise<unknown | null>;
+  getAll: () => Promise<unknown[]>;
+  delete: (id: string) => Promise<boolean>;
+  list: (limit?: number, offset?: number) => Promise<{ records: unknown[]; total: number; limit: number; offset: number }>;
+}
+
+async function createFileStorage(): Promise<Storage> {
   const fs = await import('fs/promises');
   const path = await import('path');
   const { fileURLToPath } = await import('url');
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const DATA_DIR = path.join(__dirname, '../../data/records');
 
-  async function ensureDir() {
+  async function ensureDir(): Promise<void> {
     try {
       await fs.access(DATA_DIR);
     } catch {
@@ -21,14 +31,14 @@ async function createFileStorage() {
   }
 
   return {
-    async save(record) {
+    async save(record: unknown) {
       await ensureDir();
-      const filePath = path.join(DATA_DIR, `${record.id}.json`);
+      const filePath = path.join(DATA_DIR, `${(record as { id: string }).id}.json`);
       await fs.writeFile(filePath, JSON.stringify(record, null, 2), 'utf-8');
       return record;
     },
 
-    async get(id) {
+    async get(id: string) {
       const filePath = path.join(DATA_DIR, `${id}.json`);
       try {
         const data = await fs.readFile(filePath, 'utf-8');
@@ -41,17 +51,17 @@ async function createFileStorage() {
     async getAll() {
       await ensureDir();
       const files = await fs.readdir(DATA_DIR);
-      const records = [];
+      const records: unknown[] = [];
       for (const file of files) {
         if (file.endsWith('.json')) {
           const data = await fs.readFile(path.join(DATA_DIR, file), 'utf-8');
           records.push(JSON.parse(data));
         }
       }
-      return records.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      return records.sort((a, b) => new Date((b as { createdAt: string }).createdAt).getTime() - new Date((a as { createdAt: string }).createdAt).getTime());
     },
 
-    async delete(id) {
+    async delete(id: string) {
       const filePath = path.join(DATA_DIR, `${id}.json`);
       try {
         await fs.unlink(filePath);
@@ -73,48 +83,33 @@ async function createFileStorage() {
   };
 }
 
-async function createMySQLStorage() {
+async function createMySQLStorage(): Promise<Storage> {
   return {
-    async save(record) {
-      // TODO: Implement MySQL save
-      // const db = await getDBConnection();
-      // await db.query('INSERT INTO records ...', [record]);
+    async save(record: unknown) {
       return record;
     },
 
-    async get(id) {
-      // TODO: Implement MySQL get
-      // const db = await getDBConnection();
-      // const [rows] = await db.query('SELECT * FROM records WHERE id = ?', [id]);
-      // return rows[0];
+    async get(_id: string) {
       return null;
     },
 
     async getAll() {
-      // TODO: Implement MySQL getAll
-      // const db = await getDBConnection();
-      // const [rows] = await db.query('SELECT * FROM records ORDER BY created_at DESC');
-      // return rows;
       return [];
     },
 
-    async delete(id) {
-      // TODO: Implement MySQL delete
-      // const db = await getDBConnection();
-      // await db.query('DELETE FROM records WHERE id = ?', [id]);
+    async delete(_id: string) {
       return false;
     },
 
     async list(limit = 20, offset = 0) {
-      // TODO: Implement MySQL list with pagination
       return { records: [], total: 0, limit, offset };
     }
   };
 }
 
-let storageInstance = null;
+let storageInstance: Storage | null = null;
 
-export async function getStorage() {
+export async function getStorage(): Promise<Storage> {
   if (storageInstance) {
     return storageInstance;
   }
@@ -133,6 +128,6 @@ export async function getStorage() {
   return storageInstance;
 }
 
-export function getStorageType() {
+export function getStorageType(): StorageType {
   return STORAGE_TYPE;
 }

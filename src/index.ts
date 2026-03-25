@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import { MiniOpenCodeServer } from './server/MiniOpenCodeServer.js';
-import apiModule from './modules/api/index.js';
+import apiModule from './agent/api.js';
 
 const server = new MiniOpenCodeServer();
 

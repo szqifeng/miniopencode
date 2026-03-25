@@ -1,15 +1,15 @@
 # MiniOpenCode
 
-AI Agent 服务，支持工具调用的流式对话。
+AI Agent 服务，支持多轮对话和工具调用的流式对话。
 
 ## 架构图
 
 参考 [AIAgent架构图](docs/AIAgent架构图.md)
 
 ```
-User → Gateway → Agent → Process → LLM
-                      ↓
-                    Tools
+User → API → Agent → Process → LLM
+                    ↓
+                  Tools
 ```
 
 ## 项目结构
@@ -17,26 +17,29 @@ User → Gateway → Agent → Process → LLM
 ```
 miniopencode/
 ├── src/
-│   ├── app.js              # Express 应用入口
-│   ├── index.js            # 服务启动入口
+│   ├── index.ts              # 服务启动入口
+│   ├── app.ts                # Express 应用入口
 │   ├── agent/
-│   │   ├── index.js        # Agent 核心控制层
-│   │   ├── api.js          # API 路由
-│   │   ├── cli.js          # CLI 模块
-│   │   ├── llm.js          # LLM 对话封装
-│   │   ├── process.js      # React loop 执行
-│   │   └── ws.js           # WebSocket 模块
+│   │   ├── index.ts         # Agent 核心控制层
+│   │   ├── api.ts           # API 路由
+│   │   ├── cli.ts           # CLI 模块
+│   │   ├── llm.ts           # LLM 对话封装
+│   │   ├── process.ts       # React loop 执行
+│   │   ├── session.ts       # 会话管理
+│   │   ├── types.ts        # 类型定义
+│   │   └── ws.ts           # WebSocket 模块
 │   ├── middleware/
-│   │   └── auth.js         # API 认证中间件
+│   │   └── auth.ts          # API 认证中间件
 │   ├── models/
-│   │   └── textRecord.js   # 数据记录模型
+│   │   └── textRecord.ts    # 数据记录模型
 │   └── services/
-│       ├── storageFactory.js # 存储抽象工厂
-│       └── toolService.js   # 工具服务
-├── tests/                   # 测试文件
-├── examples/                # 使用示例
-├── docs/                    # 文档
+│       ├── storageFactory.ts  # 存储抽象工厂
+│       └── toolService.ts    # 工具服务
+├── tests/                    # 测试文件
+├── examples/                 # 使用示例
+├── docs/                     # 文档
 ├── postman_collection.json   # Postman 测试集合
+├── tsconfig.json             # TypeScript 配置
 ├── package.json
 └── README.md
 ```
@@ -45,6 +48,7 @@ miniopencode/
 
 - **运行时**: Node.js 22+
 - **框架**: Express.js
+- **语言**: TypeScript
 - **AI SDK**: Vercel AI SDK (`ai`) + Anthropic SDK
 - **认证**: API Key (`X-API-Key` header)
 
@@ -102,6 +106,7 @@ X-API-Key: om_fixed_api_key_12345
 | 端点 | 方法 | 功能 |
 |------|------|------|
 | `/api/web/chat/stream` | POST | 流式对话（支持工具调用） |
+| `/health` | GET | 健康检查 |
 
 ### 流式对话
 
@@ -118,25 +123,36 @@ curl -X POST http://localhost:3000/api/web/chat/stream \
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| sessionId | string | 否 | 会话 ID，不传自动生成 |
 | messages | array | 是 | 对话消息列表 |
 | system | string | 否 | 系统提示词 |
 | useTools | boolean | 否 | 是否启用工具调用，默认 false |
 
-**Response (SSE):**
+**Response (SSE) - 全部事件流式输出:**
 
 ```
-data: {"type": "text-delta", "textDelta": "你"}
+data: {"type":"start"}
 
-data: {"type": "tool-call", "tool": "get_current_city", "args": {}}
+data: {"type":"reasoning-start","id":"0"}
+data: {"type":"reasoning-delta","id":"0","text":"用户问..."}
+data: {"type":"reasoning-end","id":"0"}
 
-data: {"type": "tool-result", "tool": "get_current_city", "result": {...}}
+data: {"type":"tool-input-start","id":"call_xxx","toolName":"get_weather"}
+data: {"type":"tool-input-delta","id":"call_xxx","delta":"{\"city\": \"深圳\"}"}
+data: {"type":"tool-input-end","id":"call_xxx"}
+
+data: {"type":"tool-call","toolCallId":"call_xxx","toolName":"get_weather","input":{"city":"深圳"}}
+
+data: {"type":"tool-result","toolCallId":"call_xxx","toolName":"get_weather","output":{...}}
+
+data: {"type":"finish-step","finishReason":"tool-calls"}
 
 data: [DONE]
 ```
 
 ### 工具调用
 
-当 `useTools: true` 时，支持工具调用和链式调用功能。
+当 `useTools: true` 时，支持工具调用和多轮循环。
 
 **可用工具：**
 
