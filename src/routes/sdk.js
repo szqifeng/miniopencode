@@ -179,8 +179,10 @@ router.post('/summarize/stream', async (req, res) => {
             const txt = delta.textDelta || delta.text || '';
             assistantMessage += txt;
             fullText += txt;
-            res.write(`data: ${JSON.stringify({ type: 'text', text: txt })}\n\n`);
-          } else if (delta.type === 'tool-call') {
+          }else if (delta.type === 'text-end') {
+            res.write(`data: ${JSON.stringify({ type: 'text', text: fullText })}\n\n`);
+          }
+          else if (delta.type === 'tool-call') {
             hasToolCalls = true;
             const toolName = TOOLS[delta.toolName]?.id || delta.toolName;
             res.write(`data: ${JSON.stringify({ type: 'tool_call', tool: toolName, args: delta.input })}\n\n`);
