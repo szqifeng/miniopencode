@@ -20,7 +20,7 @@ function createProvider() {
 
 export interface LLMRes {
   write: (data: string) => boolean;
-  end: () => void;
+  end?: () => void;
 }
 
 interface LLMChatParams {
@@ -50,8 +50,6 @@ export async function llmChat(params: LLMChatParams) {
     for await (const delta of result.fullStream) {
       res.write(`data: ${JSON.stringify(delta)}\n\n`);
     }
-    res.write('data: [DONE]\n\n');
-    res.end();
     return;
   }
 

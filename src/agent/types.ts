@@ -8,6 +8,7 @@ import type { ToolSet, Tool as AITool } from 'ai';
 
 export interface TextPart {
   type: 'text';
+  id: string;
   content: string;
 }
 
@@ -23,15 +24,89 @@ export interface ToolResultPart {
   result: unknown;
 }
 
-export type Part = TextPart | ToolCallPart | ToolResultPart;
+export interface ToolInputDeltaPart {
+  type: 'tool-input-delta';
+  id: string;
+  delta: string;
+}
+
+export interface ReasoningPart {
+  type: 'reasoning';
+  id: string;
+  content: string;
+}
+
+export interface FinishStepPart {
+  type: 'finish-step';
+  finishReason: string;
+}
+
+export interface ErrorPart {
+  type: 'error';
+  error: string;
+}
+
+export interface StartPart {
+  type: 'start';
+}
+
+export interface StartStepPart {
+  type: 'start-step';
+  request: unknown;
+}
+
+export interface TextStartPart {
+  type: 'text-start';
+  id: string;
+}
+
+export interface TextEndPart {
+  type: 'text-end';
+  id: string;
+}
+
+export interface ReasoningStartPart {
+  type: 'reasoning-start';
+  id: string;
+}
+
+export interface ReasoningEndPart {
+  type: 'reasoning-end';
+  id: string;
+  providerMetadata?: Record<string, unknown>;
+}
+
+export interface ToolInputStartPart {
+  type: 'tool-input-start';
+  id: string;
+  toolName: string;
+  dynamic: boolean;
+}
+
+export interface ToolInputEndPart {
+  type: 'tool-input-end';
+  id: string;
+}
+
+export interface FinishPart {
+  type: 'finish';
+  finishReason: string;
+  totalUsage?: unknown;
+}
+
+export type Part = TextPart | ToolCallPart | ToolResultPart | ToolInputDeltaPart | ReasoningPart | FinishStepPart | ErrorPart
+  | StartPart | StartStepPart | TextStartPart | TextEndPart
+  | ReasoningStartPart | ReasoningEndPart
+  | ToolInputStartPart | ToolInputEndPart
+  | FinishPart;
 
 // ============ Message 类型 ============
 
 export type MessageRole = 'user' | 'assistant' | 'system';
 
 export interface Message {
-  id: string;
   role: MessageRole;
+  id: string;
   parts: Part[];
   createdAt: number;
 }

@@ -8,15 +8,16 @@ import express, { Request, Response } from 'express';
 import { createAgent } from './index.js';
 import { authMiddleware } from '../middleware/auth.js';
 import { getSession, addMessage, getMessages, createMessage, createTextPart, messagesToLLMFormat } from './session.js';
-import { ChatRequest, Part } from './types.js';
+import { ChatRequest } from './types.js';
 import type { LLMRes } from './llm.js';
 
 const router = express.Router();
 
-function setupSSE(res: Response) {
+function setupSSE(res: Response, sessionId: string) {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Session-Id', sessionId);
   res.flushHeaders();
 }
 
@@ -29,28 +30,26 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
   }
 
   const sid = sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  await getSession(sid);
+  const session = await getSession(sid);
 
   // 将用户消息存储
   const userMessageParts = messages
     .filter(m => m.role === 'user')
-    .map(m => createTextPart(m.content));
+    .map((m, i) => createTextPart(`user_${i}`, m.content));
 
   if (userMessageParts.length > 0) {
     const userMessage = createMessage('user', userMessageParts);
-    await addMessage(sid, userMessage);
+    await addMessage(sid, userMessage, session);
   }
 
   // 获取完整对话历史
-  const historyMessages = await getMessages(sid);
+  const historyMessages = await getMessages(sid, session);
   const llmMessages = messagesToLLMFormat(historyMessages);
 
-  setupSSE(res);
+  setupSSE(res, sid);
 
   const agent = createAgent();
-  const assistantParts: Part[] = [];
 
-  // 直接传递 res，让 llm 处理所有流式输出
   const llmRes: LLMRes = {
     write: (data: string) => res.write(data),
     end: () => res.end()
@@ -60,14 +59,12 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     messages: llmMessages,
     system,
     res: llmRes,
-    maxLoops: 5
+    maxLoops: 5,
+    sessionId: sid,
+    addMessage: async (msg) => {
+      await addMessage(sid, msg, session);
+    }
   });
-
-  // 存储 assistant 消息
-  if (assistantParts.length > 0) {
-    const assistantMessage = createMessage('assistant', assistantParts);
-    await addMessage(sid, assistantMessage);
-  }
 });
 
 export function setupApi(app: express.Application) {

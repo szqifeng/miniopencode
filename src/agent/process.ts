@@ -6,7 +6,7 @@
 
 import { llmChat } from './llm.js';
 import type { LLMRes } from './llm.js';
-import { LLMMessage } from './types.js';
+import { LLMMessage, Message, Part } from './types.js';
 
 interface ProcessTaskParams {
   messages: LLMMessage[];
@@ -17,6 +17,8 @@ interface ProcessTaskParams {
 
 interface ProcessTaskWithStreamParams extends ProcessTaskParams {
   res?: LLMRes;
+  sessionId?: string;
+  addMessage?: (message: Message) => Promise<void>;
 }
 
 export async function processTask({ messages, system, tools, maxLoops = 5 }: ProcessTaskParams) {
@@ -66,9 +68,13 @@ export async function processTaskWithStream({
   system,
   tools,
   maxLoops = 5,
-  res
+  res,
+  sessionId,
+  addMessage
 }: ProcessTaskWithStreamParams) {
   const currentMessages: LLMMessage[] = [...messages];
+  let finalText = '';
+  const assistantMessages: Message[] = [];
 
   for (let loop = 0; loop < maxLoops; loop++) {
     const result = await llmChat({
@@ -79,28 +85,129 @@ export async function processTaskWithStream({
     }) as { fullStream: AsyncIterable<Record<string, unknown>>, finishReason?: string };
 
     let hasToolCalls = false;
-    const toolResults: Array<{ tool: string; result: unknown }> = [];
+    const toolCalls: Array<{ tool: string; args: Record<string, unknown> }> = [];
     let assistantMessage = '';
     let finishReason: string | undefined;
+    const assistantParts: Part[] = [];
+    const deltas: Record<string, unknown>[] = [];
+
+    const textContent: Record<string, string> = {};
+    const reasoningContent: Record<string, string> = {};
 
     for await (const delta of result.fullStream) {
+      deltas.push(delta);
+      res?.write(`data: ${JSON.stringify(delta)}\n\n`);
+
       const d = delta as Record<string, unknown>;
-      res?.write(`data: ${JSON.stringify(d)}\n\n`);
 
       if (d.type === 'text-delta') {
-        assistantMessage += (d.textDelta as string) || (d.text as string) || '';
+        const id = d.id as string;
+        const text = (d.textDelta as string) || (d.text as string) || '';
+        textContent[id] = (textContent[id] || '') + text;
+        assistantMessage += text;
       } else if (d.type === 'tool-call') {
         hasToolCalls = true;
-      } else if (d.type === 'tool-result') {
-        const toolName = d.toolName as string;
-        toolResults.push({ tool: toolName, result: d.output ?? null });
+        toolCalls.push({
+          tool: d.toolName as string,
+          args: d.args as Record<string, unknown> || {}
+        });
+      } else if (d.type === 'reasoning-delta') {
+        const id = d.id as string;
+        reasoningContent[id] = (reasoningContent[id] || '') + ((d.text as string) || '');
       } else if (d.type === 'finish-step') {
         finishReason = d.finishReason as string;
       }
     }
 
-    if (!hasToolCalls || toolResults.length === 0 || finishReason !== 'tool-calls') {
+    for (const d of deltas) {
+      if (d.type === 'text-delta' || d.type === 'reasoning-delta') {
+        // 这些只是累积标记，跳过
+      } else if (d.type === 'tool-call') {
+        assistantParts.push({
+          type: 'tool-call',
+          tool: d.toolName as string,
+          args: d.args as Record<string, unknown> || {}
+        });
+      } else if (d.type === 'tool-input-delta') {
+        assistantParts.push({
+          type: 'tool-input-delta',
+          id: d.id as string,
+          delta: d.delta as string || ''
+        });
+      } else if (d.type === 'tool-result') {
+        assistantParts.push({
+          type: 'tool-result',
+          tool: d.toolName as string,
+          result: d.output ?? null
+        });
+      } else if (d.type === 'finish-step') {
+        finishReason = d.finishReason as string;
+        assistantParts.push({
+          type: 'finish-step',
+          finishReason: d.finishReason as string
+        });
+      } else if (d.type === 'error') {
+        assistantParts.push({
+          type: 'error',
+          error: (d.error as string) || 'Unknown error'
+        });
+      } else if (d.type === 'start') {
+        assistantParts.push({ type: 'start' });
+      } else if (d.type === 'text-start') {
+        assistantParts.push({ type: 'text-start', id: d.id as string });
+      } else if (d.type === 'text-end') {
+        const id = d.id as string;
+        assistantParts.push({ type: 'text-end', id });
+        assistantParts.push({ type: 'text', id, content: textContent[id] || '' });
+      } else if (d.type === 'reasoning-start') {
+        assistantParts.push({ type: 'reasoning-start', id: d.id as string });
+      } else if (d.type === 'reasoning-end') {
+        const id = d.id as string;
+        assistantParts.push({ type: 'reasoning', id, content: reasoningContent[id] || '' });
+      } else if (d.type === 'tool-input-start') {
+        assistantParts.push({
+          type: 'tool-input-start',
+          id: d.id as string,
+          toolName: d.toolName as string,
+          dynamic: d.dynamic as boolean
+        });
+      } else if (d.type === 'tool-input-end') {
+        assistantParts.push({ type: 'tool-input-end', id: d.id as string });
+      } else if (d.type === 'finish') {
+        assistantParts.push({
+          type: 'finish',
+          finishReason: d.finishReason as string,
+          totalUsage: d.totalUsage
+        });
+      }
+    }
+
+    finalText = assistantMessage;
+
+    assistantMessages.push({
+      role: 'assistant',
+      id: `msg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`,
+      parts: assistantParts,
+      createdAt: Date.now()
+    });
+
+    if (!hasToolCalls || toolCalls.length === 0 || finishReason !== 'tool-calls') {
       break;
+    }
+
+    const toolResults: Array<{ tool: string; result: unknown }> = [];
+    for (const call of toolCalls) {
+      const tool = (tools as Record<string, { execute: (args: unknown) => Promise<unknown> }>)[call.tool];
+      if (tool?.execute) {
+        try {
+          const result = await tool.execute(call.args);
+          toolResults.push({ tool: call.tool, result });
+        } catch (err) {
+          toolResults.push({ tool: call.tool, result: { error: String(err) } });
+        }
+      } else {
+        toolResults.push({ tool: call.tool, result: { error: 'Tool not found' } });
+      }
     }
 
     const toolResultsText = toolResults.map(r => `${r.tool}: ${JSON.stringify(r.result)}`).join('\n');
@@ -108,5 +215,14 @@ export async function processTaskWithStream({
     currentMessages.push({ role: 'user', content: `工具执行结果：\n${toolResultsText}` });
   }
 
-  return { text: '' };
+  res?.write('data: [DONE]\n\n');
+  res?.end();
+
+  if (addMessage && sessionId) {
+    for (const msg of assistantMessages) {
+      await addMessage(msg);
+    }
+  }
+
+  return { text: finalText };
 }

@@ -6,7 +6,7 @@
 
 import { TOOLS } from '../services/toolService.js';
 import { processTask, processTaskWithStream } from './process.js';
-import { LLMMessage } from './types.js';
+import { LLMMessage, Message } from './types.js';
 import type { LLMRes } from './llm.js';
 
 interface AgentRunParams {
@@ -17,6 +17,8 @@ interface AgentRunParams {
 
 interface AgentRunWithStreamParams extends AgentRunParams {
   res?: LLMRes;
+  sessionId?: string;
+  addMessage?: (message: Message) => Promise<void>;
 }
 
 interface Agent {
@@ -40,13 +42,15 @@ export function createAgent(tools: unknown = TOOLS): Agent {
       });
     },
 
-    async runWithStream({ messages, system, maxLoops = 5, res }: AgentRunWithStreamParams) {
+    async runWithStream({ messages, system, maxLoops = 5, res, sessionId, addMessage }: AgentRunWithStreamParams) {
       return processTaskWithStream({
         messages,
         system,
         tools: tools as Parameters<typeof processTask>[0]['tools'],
         maxLoops,
-        res
+        res,
+        sessionId,
+        addMessage
       });
     },
 

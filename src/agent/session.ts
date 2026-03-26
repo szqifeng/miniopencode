@@ -34,7 +34,7 @@ async function getSessionStorage() {
     async save(session: Session) {
       await ensureDir();
       const filePath = path.join(DATA_DIR, `${session.id}.json`);
-      await fs.writeFile(filePath, JSON.stringify(session, null, 2), 'utf-8');
+      await fs.writeFile(filePath, JSON.stringify(session), 'utf-8');
       return session;
     },
 
@@ -66,8 +66,8 @@ function generateMsgId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export function createTextPart(content: string): Part {
-  return { type: 'text', content };
+export function createTextPart(id: string, content: string): Part {
+  return { type: 'text', id, content };
 }
 
 export function createToolCallPart(tool: string, args: Record<string, unknown>): Part {
@@ -80,8 +80,8 @@ export function createToolResultPart(tool: string, result: unknown): Part {
 
 export function createMessage(role: MessageRole, parts: Part[] = []): Message {
   return {
-    id: generateMsgId(),
     role,
+    id: generateMsgId(),
     parts,
     createdAt: Date.now()
   };
@@ -104,20 +104,20 @@ export async function getSession(sessionId: string): Promise<Session> {
   return session;
 }
 
-export async function addMessage(sessionId: string, message: Message): Promise<Session> {
+export async function addMessage(sessionId: string, message: Message, session?: Session): Promise<Session> {
   const storage = await getSessionStorage();
-  const session = await getSession(sessionId);
+  const s = session || await getSession(sessionId);
 
-  session.messages.push(message);
-  session.updatedAt = Date.now();
+  s.messages.push(message);
+  s.updatedAt = Date.now();
 
-  await storage.save(session);
-  return session;
+  await storage.save(s);
+  return s;
 }
 
-export async function getMessages(sessionId: string): Promise<Message[]> {
-  const session = await getSession(sessionId);
-  return session.messages;
+export async function getMessages(sessionId: string, session?: Session): Promise<Message[]> {
+  const s = session || await getSession(sessionId);
+  return s.messages;
 }
 
 export function messageToLLMFormat(message: Message): LLMMessage {
