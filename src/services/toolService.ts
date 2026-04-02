@@ -8,6 +8,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
+import https from 'node:https';
+import http from 'node:http';
 
 interface ToolResult {
   output: string;
@@ -159,12 +161,67 @@ const bashTool = {
   }
 };
 
+async function fetchUrl(url: string, format: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const protocol = url.startsWith('https') ? https : http;
+    const options = {
+      headers: { 'User-Agent': 'Mozilla/5.0' },
+      timeout: 30000
+    };
+    
+    protocol.get(url, options, (res) => {
+      if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        fetchUrl(res.headers.location, format).then(resolve).catch(reject);
+        return;
+      }
+      
+      let data = '';
+      res.on('data', (chunk) => data += chunk);
+      res.on('end', () => {
+        if (format === 'html') {
+          resolve(data);
+        } else if (format === 'text') {
+          resolve(data.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim());
+        } else {
+          resolve(data);
+        }
+      });
+    }).on('error', reject).on('timeout', () => reject(new Error('请求超时')));
+  });
+}
+
+const webfetchTool = {
+  id: 'webfetch',
+  description: '从指定 URL 获取内容 - 支持 markdown/text/html 格式',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      url: { type: 'string', description: '要获取的 URL 地址' },
+      format: { type: 'string', description: '返回格式: markdown (默认), text, html' }
+    },
+    required: ['url']
+  }),
+  async execute({ url, format = 'markdown' }: { url: string; format?: string }): Promise<ToolResult> {
+    try {
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        return { output: 'URL 必须以 http:// 或 https:// 开头', title: '错误', metadata: { error: 'Invalid URL protocol' } };
+      }
+      const content = await fetchUrl(url, format);
+      const title = `获取成功: ${url}`;
+      return { output: content, title, metadata: { url, format, size: content.length } };
+    } catch (error) {
+      return { output: `获取失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
 export const TOOLS: ToolSet = {
   read: readTool,
   write: writeTool,
   edit: editTool,
   grep: grepTool,
-  bash: bashTool
+  bash: bashTool,
+  webfetch: webfetchTool
 } as ToolSet;
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<ToolResult | { error: string }> {
