@@ -79,7 +79,62 @@ MiniOpenCode 是一个 AI Agent 服务，当前已实现基础功能，计划逐
 
 ---
 
-## 5. 多 Agent 体系
+## 10. 记忆系统
+
+### 目标
+让 AI Agent 具备长期记忆能力，跨会话记住用户偏好、知识和上下文。
+
+### 功能点
+- [ ] 记忆存储抽象层
+- [ ] 短期记忆（会话级上下文）
+- [ ] 长期记忆（用户偏好、关键信息）
+- [ ] 记忆索引与检索
+- [ ] 记忆优先级（重要 vs 普通）
+- [ ] 记忆遗忘策略
+- [ ] 用户可查看/编辑/删除记忆
+- [ ] 记忆加密与隐私保护
+
+### 技术方案
+- 向量数据库存储（Milvus/Pinecone）
+- RAG（检索增强生成）
+- 记忆压缩与摘要
+- 重要性评分
+
+### 参考
+- MemGPT、Notion AI Memory、Personal AI
+
+---
+
+## 11. RAG 系统
+
+### 目标
+检索增强生成系统，支持大规模知识库的索引与检索。
+
+### 功能点
+- [ ] 文档解析（PDF、Markdown、TXT、HTML）
+- [ ] 文本分块（Chunking）策略
+- [ ] 多种 Embedding 模型支持
+- [ ] 向量数据库集成（Milvus/Pinecone/Chroma）
+- [ ] 混合检索（向量 + 关键词）
+- [ ] 重排序（Reranking）
+- [ ] 增量索引
+- [ ] 索引监控与统计
+
+### 索引优化
+- [ ] 分层索引（Hierarchical Indexing）
+- [ ] 自适应 Chunk Size
+- [ ] 索引压缩
+- [ ] 并行索引构建
+- [ ] 缓存优化
+- [ ] 近似最近邻搜索（ANN）
+
+### 技术方案
+- Embedding: OpenAI/Cohere/MiniMax
+- 向量数据库: ChromaDB（轻量）/ Milvus（生产）
+- 检索: Hybrid Search + Reranker
+
+### 参考
+- LangChain RAG、Dify RAG、LlamaIndex
 
 ### 目标
 支持多个 AI Agent 协作处理复杂任务。
@@ -213,6 +268,8 @@ MiniOpenCode 是一个 AI Agent 服务，当前已实现基础功能，计划逐
 - [ ] APP 页面
 - [ ] 工作空间 (Workspace)
 - [ ] DIY 远端工作中心
+- [ ] 记忆系统
+- [ ] RAG 系统
 
 ---
 
