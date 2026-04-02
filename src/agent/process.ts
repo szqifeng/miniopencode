@@ -94,6 +94,8 @@ export async function processTaskWithStream({
     const textContent: Record<string, string> = {};
     const reasoningContent: Record<string, string> = {};
 
+    const toolResults: Array<{ tool: string; result: unknown }> = [];
+
     for await (const delta of result.fullStream) {
       deltas.push(delta);
       res?.write(`data: ${JSON.stringify(delta)}\n\n`);
@@ -110,6 +112,11 @@ export async function processTaskWithStream({
         toolCalls.push({
           tool: d.toolName as string,
           args: d.args as Record<string, unknown> || {}
+        });
+      } else if (d.type === 'tool-result') {
+        toolResults.push({
+          tool: d.toolName as string,
+          result: d.output ?? null
         });
       } else if (d.type === 'reasoning-delta') {
         const id = d.id as string;
@@ -191,23 +198,8 @@ export async function processTaskWithStream({
       createdAt: Date.now()
     });
 
-    if (!hasToolCalls || toolCalls.length === 0 || finishReason !== 'tool-calls') {
+    if (!hasToolCalls || toolResults.length === 0 || finishReason !== 'tool-calls') {
       break;
-    }
-
-    const toolResults: Array<{ tool: string; result: unknown }> = [];
-    for (const call of toolCalls) {
-      const tool = (tools as Record<string, { execute: (args: unknown) => Promise<unknown> }>)[call.tool];
-      if (tool?.execute) {
-        try {
-          const result = await tool.execute(call.args);
-          toolResults.push({ tool: call.tool, result });
-        } catch (err) {
-          toolResults.push({ tool: call.tool, result: { error: String(err) } });
-        }
-      } else {
-        toolResults.push({ tool: call.tool, result: { error: 'Tool not found' } });
-      }
     }
 
     const toolResultsText = toolResults.map(r => `${r.tool}: ${JSON.stringify(r.result)}`).join('\n');

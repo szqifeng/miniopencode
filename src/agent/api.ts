@@ -22,7 +22,7 @@ function setupSSE(res: Response, sessionId: string) {
 }
 
 router.post('/chat/stream', async (req: Request, res: Response) => {
-  const { sessionId, messages, system, useTools = false } = req.body as ChatRequest;
+  const { sessionId, messages, system } = req.body as ChatRequest;
 
   if (!messages?.length) {
     res.status(400).json({ error: 'messages is required' });

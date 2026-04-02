@@ -4,8 +4,9 @@
 
 import { jsonSchema } from 'ai';
 import type { ToolSet } from 'ai';
-
-const cities = ['北京', '上海', '深圳', '广州', '杭州', '成都', '武汉', '西安'];
+import fs from 'node:fs/promises';
+import { exec } from 'node:child_process';
+import { promisify } from 'node:util';
 
 interface ToolResult {
   output: string;
@@ -13,81 +14,103 @@ interface ToolResult {
   metadata: Record<string, unknown>;
 }
 
-const getCurrentCityTool = {
-  id: 'get_current_city',
-  description: '获取用户当前所在的城市',
-  inputSchema: jsonSchema({
-    type: 'object',
-    properties: {}
-  }),
-  async execute(): Promise<ToolResult> {
-    const city = cities[Math.floor(Math.random() * cities.length)];
-    return { output: `当前城市: ${city}`, title: '位置信息', metadata: { city } };
-  }
-};
-
-const getWeatherTool = {
-  id: 'get_weather',
-  description: '获取指定城市的天气信息',
+const readTool = {
+  id: 'read',
+  description: '读取文件内容',
   inputSchema: jsonSchema({
     type: 'object',
     properties: {
-      city: {
-        type: 'string',
-        description: '城市名称'
-      }
+      path: { type: 'string', description: '文件路径' }
     },
-    required: ['city']
+    required: ['path']
   }),
-  async execute({ city }: { city: string }): Promise<ToolResult> {
-    const weathers = ['晴', '多云', '阴', '小雨', '雷阵雨'];
-    const weather = weathers[Math.floor(Math.random() * weathers.length)];
-    const temp = Math.floor(Math.random() * 20) + 10;
-    return { output: `${city}天气：${weather}，${temp}°C`, title: '天气信息', metadata: { city, weather, temperature: `${temp}°C` } };
-  }
-};
-
-const calculateTool = {
-  id: 'calculate',
-  description: '执行数学计算',
-  inputSchema: jsonSchema({
-    type: 'object',
-    properties: {
-      expression: {
-        type: 'string',
-        description: '数学表达式，如 2 + 2'
-      }
-    },
-    required: ['expression']
-  }),
-  async execute({ expression }: { expression: string }): Promise<ToolResult> {
+  async execute({ path }: { path: string }): Promise<ToolResult> {
     try {
-      const result = Function(`"use strict"; return (${expression})`)();
-      return { output: `${expression} = ${result}`, title: '计算结果', metadata: { expression, result } };
-    } catch {
-      return { output: '计算表达式无效', title: '计算错误', metadata: { error: '计算表达式无效' } };
+      const content = await fs.readFile(path, 'utf-8');
+      return { output: content, title: `文件: ${path}`, metadata: { path } };
+    } catch (error) {
+      return { output: `读取失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
     }
   }
 };
 
-const getDateTool = {
-  id: 'get_date',
-  description: '获取当前日期和时间',
+const writeTool = {
+  id: 'write',
+  description: '写入内容到文件',
   inputSchema: jsonSchema({
     type: 'object',
-    properties: {},
-    required: []
+    properties: {
+      path: { type: 'string', description: '文件路径' },
+      content: { type: 'string', description: '文件内容' }
+    },
+    required: ['path', 'content']
   }),
-  async execute(): Promise<ToolResult> {
-    return { output: new Date().toISOString(), title: '当前时间', metadata: { date: new Date().toISOString() } };
+  async execute({ path, content }: { path: string; content: string }): Promise<ToolResult> {
+    try {
+      await fs.writeFile(path, content, 'utf-8');
+      return { output: `已写入文件: ${path}`, title: '写入成功', metadata: { path, bytes: Buffer.byteLength(content, 'utf-8') } };
+    } catch (error) {
+      return { output: `写入失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const editTool = {
+  id: 'edit',
+  description: '编辑文件，通过替换字符串',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: '文件路径' },
+      oldString: { type: 'string', description: '要替换的字符串' },
+      newString: { type: 'string', description: '新字符串' }
+    },
+    required: ['path', 'oldString', 'newString']
+  }),
+  async execute({ path, oldString, newString }: { path: string; oldString: string; newString: string }): Promise<ToolResult> {
+    try {
+      const content = await fs.readFile(path, 'utf-8');
+      if (!content.includes(oldString)) {
+        return { output: `未找到要替换的字符串`, title: '错误', metadata: { error: 'oldString not found in file' } };
+      }
+      const newContent = content.replace(oldString, newString);
+      await fs.writeFile(path, newContent, 'utf-8');
+      return { output: `已编辑文件: ${path}`, title: '编辑成功', metadata: { path } };
+    } catch (error) {
+      return { output: `编辑失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const execAsync = promisify(exec);
+
+const bashTool = {
+  id: 'bash',
+  description: '执行 bash 命令',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      command: { type: 'string', description: 'bash 命令' },
+      cwd: { type: 'string', description: '工作目录' }
+    },
+    required: ['command']
+  }),
+  async execute({ command, cwd }: { command: string; cwd?: string }): Promise<ToolResult> {
+    try {
+      const { stdout, stderr } = await execAsync(command, { cwd });
+      const output = stderr || stdout;
+      return { output: output || '(无输出)', title: '命令执行结果', metadata: { command, cwd, stdout, stderr } };
+    } catch (error) {
+      return { output: `命令执行失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
   }
 };
 
 export const TOOLS: ToolSet = {
-  get_current_city: getCurrentCityTool,
-  get_weather: getWeatherTool,
-  calculate: calculateTool,
-  get_date: getDateTool
+  read: readTool,
+  write: writeTool,
+  edit: editTool,
+  bash: bashTool
 } as ToolSet;
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<ToolResult | { error: string }> {

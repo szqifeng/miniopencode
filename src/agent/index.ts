@@ -8,6 +8,7 @@ import { TOOLS } from '../services/toolService.js';
 import { processTask, processTaskWithStream } from './process.js';
 import { LLMMessage, Message } from './types.js';
 import type { LLMRes } from './llm.js';
+import type { ToolSet } from 'ai';
 
 interface AgentRunParams {
   messages: LLMMessage[];
@@ -29,7 +30,7 @@ interface Agent {
   withToolsById(toolIds: string[]): Agent;
 }
 
-export function createAgent(tools: unknown = TOOLS): Agent {
+export function createAgent(tools: ToolSet = TOOLS): Agent {
   return {
     tools,
 
@@ -54,15 +55,15 @@ export function createAgent(tools: unknown = TOOLS): Agent {
       });
     },
 
-    withTools(additionalTools: unknown) {
+    withTools(additionalTools: ToolSet) {
       return createAgent(additionalTools);
     },
 
     withToolsById(toolIds: string[]) {
-      const filtered: Record<string, unknown> = {};
+      const filtered: ToolSet = {};
       for (const id of toolIds) {
-        if ((TOOLS as Record<string, unknown>)[id]) {
-          filtered[id] = (TOOLS as Record<string, unknown>)[id];
+        if (TOOLS[id]) {
+          filtered[id] = TOOLS[id];
         }
       }
       return createAgent(filtered);
