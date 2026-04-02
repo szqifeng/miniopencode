@@ -9,6 +9,7 @@ import { processTask, processTaskWithStream } from './process.js';
 import { LLMMessage, Message } from './types.js';
 import type { LLMRes } from './llm.js';
 import type { ToolSet } from 'ai';
+import { getDefaultPrompt } from './prompts.js';
 
 interface AgentRunParams {
   messages: LLMMessage[];
@@ -35,18 +36,20 @@ export function createAgent(tools: ToolSet = TOOLS): Agent {
     tools,
 
     async run({ messages, system, maxLoops = 5 }: AgentRunParams) {
+      const systemPrompt = system || await getDefaultPrompt();
       return processTask({
         messages,
-        system,
+        system: systemPrompt,
         tools: tools as Parameters<typeof processTask>[0]['tools'],
         maxLoops
       });
     },
 
     async runWithStream({ messages, system, maxLoops = 5, res, sessionId, addMessage }: AgentRunWithStreamParams) {
+      const systemPrompt = system || await getDefaultPrompt();
       return processTaskWithStream({
         messages,
-        system,
+        system: systemPrompt,
         tools: tools as Parameters<typeof processTask>[0]['tools'],
         maxLoops,
         res,

@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:3000;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:3000;">
   <title>MiniOpenCode</title>
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/9.1.6/marked.min.js"></script>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -35,7 +35,7 @@
       overflow: hidden;
     }
     .sidebar {
-      width: 250px;
+      width: 280px;
       background: #fafafa;
       border-right: 1px solid #e0e0e0;
       display: flex;
@@ -46,7 +46,80 @@
       border-bottom: 1px solid #e0e0e0;
       font-size: 14px;
       color: #1e88e5;
-      font-weight: 500;
+      font-weight: 600;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .sidebar-header .actions {
+      display: flex;
+      gap: 8px;
+    }
+    .sidebar-header button {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background 0.2s;
+    }
+    .sidebar-header button:hover {
+      background: #e0e0e0;
+    }
+    .session-list {
+      flex: 1;
+      overflow-y: auto;
+    }
+    .session-item {
+      padding: 10px 12px;
+      cursor: pointer;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .session-item:hover {
+      background: #e8e8e8;
+    }
+    .session-item.active {
+      background: #e3f2fd;
+      color: #1e88e5;
+    }
+    .session-item .session-info {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .session-item .session-time {
+      font-size: 11px;
+      color: #999;
+      margin-left: 8px;
+    }
+    .session-item .delete-btn {
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      opacity: 0;
+      transition: opacity 0.2s;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .session-item:hover .delete-btn {
+      opacity: 1;
+    }
+    .session-item .delete-btn:hover {
+      background: #ffcdd2;
+      color: #c62828;
+    }
+    .collapsed .session-list {
+      display: none;
+    }
+    .collapsed .sidebar-header {
+      border-bottom: none;
     }
     .chat-area {
       flex: 1;
@@ -153,7 +226,7 @@
       transition: background 0.2s, transform 0.1s;
     }
     .input-area button:hover {
-      background: #0f766e;
+      background: #1976d2;
       transform: translateY(-1px);
     }
     .input-area button:active {
@@ -172,8 +245,16 @@
   </div>
   
   <div class="main">
-    <div class="sidebar">
-      <div class="sidebar-header">会话</div>
+    <div class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <span>会话列表</span>
+        <div class="actions">
+          <button id="refreshBtn" title="刷新">🔄</button>
+          <button id="toggleBtn" title="展开/收起">▼</button>
+          <button id="addBtn" title="新建会话">+</button>
+        </div>
+      </div>
+      <div class="session-list" id="sessionList"></div>
     </div>
     
     <div class="chat-area">
@@ -187,17 +268,128 @@
   </div>
 
   <script>
-    let currentSessionId = 'session_' + Date.now();
-    
+    let sessions = [];
+    let currentSessionId = null;
+
+    const sidebar = document.getElementById('sidebar');
+    const sessionListEl = document.getElementById('sessionList');
     const messagesContainer = document.getElementById('messages');
     const input = document.getElementById('input');
     const sendBtn = document.getElementById('sendBtn');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const addBtn = document.getElementById('addBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
 
     function escapeHtml(text) {
       const div = document.createElement('div');
       div.textContent = text;
       return div.innerHTML;
     }
+
+    function formatTime(timestamp) {
+      const d = new Date(timestamp);
+      return d.toLocaleString('zh-CN', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderSessions() {
+      sessionListEl.innerHTML = '';
+      sessions.forEach(session => {
+        const div = document.createElement('div');
+        div.className = 'session-item' + (session.id === currentSessionId ? ' active' : '');
+        div.innerHTML = `
+          <div class="session-info">
+            <span>${escapeHtml(session.title || '新会话')}</span>
+            <span class="session-time">${formatTime(session.updatedAt)}</span>
+          </div>
+          <button class="delete-btn" data-id="${session.id}" title="删除">🗑</button>
+        `;
+        div.querySelector('.session-info').addEventListener('click', () => selectSession(session.id));
+        div.querySelector('.delete-btn').addEventListener('click', (e) => {
+          e.stopPropagation();
+          deleteSession(session.id);
+        });
+        sessionListEl.appendChild(div);
+      });
+    }
+
+    async function loadSessions() {
+      try {
+        const res = await fetch('http://localhost:3000/api/web/sessions', {
+          headers: { 'X-API-Key': 'om_fixed_api_key_12345' }
+        });
+        if (res.ok) {
+          sessions = await res.json();
+          renderSessions();
+        }
+      } catch (e) {
+        console.log('Failed to load sessions');
+      }
+    }
+
+    async function selectSession(sessionId) {
+      currentSessionId = sessionId;
+      renderSessions();
+      messagesContainer.innerHTML = '';
+      
+      try {
+        const res = await fetch(`http://localhost:3000/api/web/chat/session/${sessionId}`, {
+          headers: { 'X-API-Key': 'om_fixed_api_key_12345' }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          data.messages.forEach(msg => {
+            const content = msg.parts?.filter(p => p.type === 'text').map(p => p.content).join('') || '';
+            if (content) {
+              addMessage(msg.role, content);
+            }
+          });
+        }
+      } catch (e) {
+        console.error('Failed to load session:', e);
+      }
+    }
+
+    async function deleteSession(sessionId) {
+      if (!confirm('确定删除这个会话？')) return;
+      
+      try {
+        await fetch(`http://localhost:3000/api/web/chat/session/${sessionId}`, {
+          method: 'DELETE',
+          headers: { 'X-API-Key': 'om_fixed_api_key_12345' }
+        });
+        sessions = sessions.filter(s => s.id !== sessionId);
+        if (currentSessionId === sessionId) {
+          currentSessionId = sessions[0]?.id || null;
+          messagesContainer.innerHTML = '';
+        }
+        renderSessions();
+      } catch (e) {
+        console.error('Failed to delete session:', e);
+      }
+    }
+
+    function createNewSession() {
+      currentSessionId = 'session_' + Date.now();
+      sessions.unshift({
+        id: currentSessionId,
+        title: '新会话',
+        createdAt: Date.now(),
+        updatedAt: Date.now()
+      });
+      messagesContainer.innerHTML = '';
+      renderSessions();
+    }
+
+    toggleBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+      toggleBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '▼';
+    });
+
+    addBtn.addEventListener('click', createNewSession);
+
+    refreshBtn.addEventListener('click', () => {
+      loadSessions();
+    });
 
     function setInputEnabled(enabled) {
       input.disabled = !enabled;
@@ -221,7 +413,6 @@
       const contentDiv = assistantDiv.querySelector('.message-content');
       
       try {
-        console.log('Sending request...');
         const response = await fetch('http://localhost:3000/api/web/chat/stream', {
           method: 'POST',
           headers: {
@@ -265,8 +456,15 @@
                 if (data.type === 'text-delta') {
                   const delta = data.textDelta || data.text || '';
                   fullText += delta;
-                  console.log('Text delta:', delta, 'Full text:', fullText);
-                  contentDiv.textContent = fullText;
+                  try {
+                    if (typeof marked !== 'undefined' && marked.parse) {
+                      contentDiv.innerHTML = marked.parse(fullText);
+                    } else {
+                      contentDiv.textContent = fullText;
+                    }
+                  } catch (e) {
+                    contentDiv.textContent = fullText;
+                  }
                   messagesContainer.scrollTop = messagesContainer.scrollHeight;
                 } else if (data.type === 'error') {
                   contentDiv.textContent = '错误: ' + JSON.stringify(data.error);
@@ -274,7 +472,7 @@
                   return;
                 }
               } catch (e) {
-                console.error('Parse error:', e, trimmed);
+                console.error('Parse error:', e);
               }
             }
           }
@@ -282,6 +480,14 @@
 
         if (!fullText) {
           contentDiv.textContent = '(无响应)';
+        }
+
+        // Update session title if first message
+        const session = sessions.find(s => s.id === currentSessionId);
+        if (session && session.title === '新会话') {
+          session.title = text.slice(0, 20);
+          session.updatedAt = Date.now();
+          renderSessions();
         }
       } catch (e) {
         contentDiv.textContent = '错误: ' + e.message;
@@ -294,7 +500,12 @@
     function addMessage(role, content) {
       const div = document.createElement('div');
       div.className = 'message ' + role;
-      const htmlContent = role === 'assistant' ? (typeof marked !== 'undefined' ? marked.parse(content) : content) : escapeHtml(content);
+      let htmlContent;
+      if (role === 'assistant' && typeof marked !== 'undefined') {
+        htmlContent = marked.parse(content);
+      } else {
+        htmlContent = escapeHtml(content);
+      }
       div.innerHTML = '<div class="message-content">' + htmlContent + '</div>';
       messagesContainer.appendChild(div);
       messagesContainer.scrollTop = messagesContainer.scrollHeight;
@@ -312,6 +523,9 @@
       input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     });
 
+    // Initialize
+    createNewSession();
+    loadSessions();
     console.log('UI loaded');
   </script>
 </body>

@@ -7,7 +7,7 @@
 import express, { Request, Response } from 'express';
 import { createAgent } from './index.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { getSession, addMessage, getMessages, createMessage, createTextPart, messagesToLLMFormat } from './session.js';
+import { getSession, addMessage, getMessages, createMessage, createTextPart, messagesToLLMFormat, clearSession } from './session.js';
 import { ChatRequest } from './types.js';
 import type { LLMRes } from './llm.js';
 
@@ -65,6 +65,69 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
       await addMessage(sid, msg, session);
     }
   });
+});
+
+router.get('/chat/session/:sessionId', async (req: Request, res: Response) => {
+  const sessionId = req.params.sessionId as string;
+  
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required' });
+    return;
+  }
+
+  const session = await getSession(sessionId);
+  const messages = await getMessages(sessionId, session);
+  
+  res.json({
+    sessionId: session.id,
+    messages: messages,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt
+  });
+});
+
+router.delete('/chat/session/:sessionId', async (req: Request, res: Response) => {
+  const sessionId = req.params.sessionId as string;
+  
+  if (!sessionId) {
+    res.status(400).json({ error: 'sessionId is required' });
+    return;
+  }
+
+  await clearSession(sessionId);
+  res.json({ success: true });
+});
+
+router.get('/sessions', async (_req: Request, res: Response) => {
+  const fs = await import('fs/promises');
+  const path = await import('path');
+  const { fileURLToPath } = await import('url');
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const DATA_DIR = path.join(__dirname, '../../data/sessions');
+  
+  try {
+    const files = await fs.readdir(DATA_DIR);
+    const sessions = await Promise.all(
+      files
+        .filter(f => f.endsWith('.json'))
+        .map(async (file) => {
+          const filePath = path.join(DATA_DIR, file);
+          const data = await fs.readFile(filePath, 'utf-8');
+          const session = JSON.parse(data);
+          return {
+            id: session.id,
+            title: session.messages[0]?.parts?.[0]?.content?.slice(0, 20) || '新会话',
+            createdAt: session.createdAt,
+            updatedAt: session.updatedAt
+          };
+        })
+    );
+    
+    sessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    res.json(sessions);
+  } catch {
+    res.json([]);
+  }
 });
 
 export function setupApi(app: express.Application) {
