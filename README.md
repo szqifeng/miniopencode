@@ -50,6 +50,10 @@ miniopencode/
 └── README.md
 ```
 
+## 源码解析
+
+https://www.opencodeshare.cn/docs/minicode/minicode-11-agent-react
+
 ## 技术栈
 
 - **运行时**: Node.js 22+
