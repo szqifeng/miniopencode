@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; connect-src 'self' http://localhost:3000;">
+  <title>MiniOpenCode</title>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f5f5f5;
+      color: #333;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .header {
+      background: #fff;
+      padding: 12px 20px;
+      border-bottom: 1px solid #e0e0e0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .header h1 {
+      font-size: 18px;
+      color: #1e88e5;
+    }
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+    .sidebar {
+      width: 250px;
+      background: #fafafa;
+      border-right: 1px solid #e0e0e0;
+      display: flex;
+      flex-direction: column;
+    }
+    .sidebar-header {
+      padding: 12px;
+      border-bottom: 1px solid #e0e0e0;
+      font-size: 14px;
+      color: #1e88e5;
+      font-weight: 500;
+    }
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      background: #fff;
+    }
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .message {
+      margin-bottom: 20px;
+      max-width: 85%;
+      animation: fadeIn 0.3s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .message.user {
+      margin-left: auto;
+      background: #e3f2fd;
+      padding: 12px 16px;
+      border-radius: 12px 12px 2px 12px;
+    }
+    .message.assistant {
+      background: #f5f5f5;
+      padding: 12px 16px;
+      border-radius: 12px 12px 12px 2px;
+      border: 1px solid #e0e0e0;
+    }
+    .message-content {
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .message-content h1 { font-size: 24px; margin: 16px 0 8px; color: #1e88e5; }
+    .message-content h2 { font-size: 20px; margin: 14px 0 6px; color: #1e88e5; }
+    .message-content h3 { font-size: 18px; margin: 12px 0 4px; color: #1e88e5; }
+    .message-content p { margin: 8px 0; }
+    .message-content ul, .message-content ol { margin: 8px 0; padding-left: 20px; }
+    .message-content li { margin: 4px 0; }
+    .message-content code { background: #f0f0f0; padding: 2px 6px; border-radius: 4px; font-family: 'Monaco', 'Courier New', monospace; font-size: 13px; color: #d63384; }
+    .message-content pre { background: #f0f0f0; padding: 12px; border-radius: 8px; overflow-x: auto; margin: 8px 0; }
+    .message-content pre code { background: transparent; padding: 0; }
+    .message-content blockquote { border-left: 3px solid #1e88e5; padding-left: 12px; color: #666; margin: 8px 0; font-style: italic; }
+    .message-content a { color: #1e88e5; text-decoration: underline; }
+    .message-content strong { color: #1e88e5; font-weight: 600; }
+    .message-content hr { border: none; border-top: 1px solid #e0e0e0; margin: 16px 0; }
+    .typing-indicator {
+      display: inline-flex;
+      gap: 4px;
+      padding: 8px 0;
+    }
+    .typing-indicator span {
+      width: 8px;
+      height: 8px;
+      background: #1e88e5;
+      border-radius: 50%;
+      animation: bounce 1.4s infinite ease-in-out;
+    }
+    .typing-indicator span:nth-child(1) { animation-delay: -0.32s; }
+    .typing-indicator span:nth-child(2) { animation-delay: -0.16s; }
+    @keyframes bounce {
+      0%, 80%, 100% { transform: scale(0); }
+      40% { transform: scale(1); }
+    }
+    .input-area {
+      padding: 16px 20px;
+      background: #fafafa;
+      border-top: 1px solid #e0e0e0;
+      display: flex;
+      gap: 12px;
+    }
+    .input-area textarea {
+      flex: 1;
+      background: #fff;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 12px 14px;
+      color: #333;
+      font-size: 14px;
+      resize: none;
+      min-height: 48px;
+      max-height: 120px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+    }
+    .input-area textarea:focus {
+      outline: none;
+      border-color: #1e88e5;
+      box-shadow: 0 0 0 2px rgba(30,136,229,0.1);
+    }
+    .input-area button {
+      background: #1e88e5;
+      color: #fff;
+      border: none;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s, transform 0.1s;
+    }
+    .input-area button:hover {
+      background: #0f766e;
+      transform: translateY(-1px);
+    }
+    .input-area button:active {
+      transform: translateY(0);
+    }
+    .input-area button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>MiniOpenCode</h1>
+  </div>
+  
+  <div class="main">
+    <div class="sidebar">
+      <div class="sidebar-header">会话</div>
+    </div>
+    
+    <div class="chat-area">
+      <div class="messages" id="messages"></div>
+      
+      <div class="input-area">
+        <textarea id="input" placeholder="输入消息..." rows="1"></textarea>
+        <button id="sendBtn">发送</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentSessionId = 'session_' + Date.now();
+    
+    const messagesContainer = document.getElementById('messages');
+    const input = document.getElementById('input');
+    const sendBtn = document.getElementById('sendBtn');
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function setInputEnabled(enabled) {
+      input.disabled = !enabled;
+      sendBtn.disabled = !enabled;
+    }
+
+    async function sendMessage() {
+      const text = input.value.trim();
+      if (!text) return;
+
+      addMessage('user', text);
+      input.value = '';
+      setInputEnabled(false);
+
+      const assistantDiv = document.createElement('div');
+      assistantDiv.className = 'message assistant';
+      assistantDiv.innerHTML = '<div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>';
+      messagesContainer.appendChild(assistantDiv);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+
+      const contentDiv = assistantDiv.querySelector('.message-content');
+      
+      try {
+        console.log('Sending request...');
+        const response = await fetch('http://localhost:3000/api/web/chat/stream', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': 'om_fixed_api_key_12345'
+          },
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            messages: [{ role: 'user', content: text }],
+            system: '你是助手，可以调用工具',
+            useTools: true
+          })
+        });
+
+        if (!response.ok) {
+          contentDiv.textContent = '请求失败: ' + response.status;
+          setInputEnabled(true);
+          return;
+        }
+
+        contentDiv.innerHTML = '';
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let fullText = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          const lines = chunk.split('\n');
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed === 'data: [DONE]') continue;
+
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                
+                if (data.type === 'text-delta') {
+                  const delta = data.textDelta || data.text || '';
+                  fullText += delta;
+                  console.log('Text delta:', delta, 'Full text:', fullText);
+                  contentDiv.textContent = fullText;
+                  messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                } else if (data.type === 'error') {
+                  contentDiv.textContent = '错误: ' + JSON.stringify(data.error);
+                  setInputEnabled(true);
+                  return;
+                }
+              } catch (e) {
+                console.error('Parse error:', e, trimmed);
+              }
+            }
+          }
+        }
+
+        if (!fullText) {
+          contentDiv.textContent = '(无响应)';
+        }
+      } catch (e) {
+        contentDiv.textContent = '错误: ' + e.message;
+      }
+
+      setInputEnabled(true);
+      input.focus();
+    }
+
+    function addMessage(role, content) {
+      const div = document.createElement('div');
+      div.className = 'message ' + role;
+      const htmlContent = role === 'assistant' ? (typeof marked !== 'undefined' ? marked.parse(content) : content) : escapeHtml(content);
+      div.innerHTML = '<div class="message-content">' + htmlContent + '</div>';
+      messagesContainer.appendChild(div);
+      messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    }
+
+    sendBtn.addEventListener('click', sendMessage);
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        sendMessage();
+      }
+    });
+    input.addEventListener('input', function() {
+      input.style.height = 'auto';
+      input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+    });
+
+    console.log('UI loaded');
+  </script>
+</body>
+</html>

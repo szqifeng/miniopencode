@@ -35,7 +35,11 @@ miniopencode/
 │   └── services/
 │       ├── storageFactory.ts  # 存储抽象工厂
 │       └── toolService.ts    # 工具服务
-├── tests/                    # 测试文件
+├── src/ui/                   # 桌面 UI 模块 (Electron)
+│   ├── main.ts              # Electron 主进程
+│   ├── preload.ts           # 预加载脚本
+│   ├── renderer/            # 渲染进程
+│   └── package.json
 ├── examples/                 # 使用示例
 ├── docs/                     # 文档
 ├── postman_collection.json   # Postman 测试集合
@@ -90,6 +94,35 @@ MINIMAX_CN_API_KEY=your_minimax_api_key_here
 STORAGE_TYPE=file
 PORT=3000
 ```
+
+## 桌面 UI
+
+项目提供 Electron 桌面应用，支持 macOS 和 Windows。
+
+### 安装与运行
+
+```bash
+# 1. 启动后端服务（在项目根目录）
+npm run dev
+
+# 2. 安装 UI 依赖（在新终端）
+cd src/ui
+# 中国区用户建议使用镜像
+ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ npm install
+
+# 3. 构建 UI
+npm run build
+
+# 4. 运行 UI（在 dist-ui 目录）
+npx electron . --no-sandbox
+```
+
+### UI 功能
+
+- 跨平台桌面应用（macOS / Windows）
+- 会话列表管理
+- 实时对话界面
+- 流式响应显示
 
 ## API 访问文档
 

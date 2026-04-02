@@ -5,6 +5,7 @@
 import { jsonSchema } from 'ai';
 import type { ToolSet } from 'ai';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 
@@ -84,6 +85,58 @@ const editTool = {
 
 const execAsync = promisify(exec);
 
+async function searchFiles(dir: string, pattern: RegExp, include?: string, results: string[] = [], depth = 0): Promise<string[]> {
+  if (depth > 10) return results;
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory() && !entry.name.startsWith('.') && entry.name !== 'node_modules') {
+        await searchFiles(fullPath, pattern, include, results, depth + 1);
+      } else if (entry.isFile()) {
+        if (include && !entry.name.match(new RegExp(include.replace(/\*/g, '.*')))) continue;
+        try {
+          const content = await fs.readFile(fullPath, 'utf-8');
+          const lines = content.split('\n');
+          lines.forEach((line, index) => {
+            if (pattern.test(line)) {
+              results.push(`${fullPath}:${index + 1}: ${line}`);
+            }
+          });
+        } catch {}
+      }
+    }
+  } catch {}
+  return results;
+}
+
+const grepTool = {
+  id: 'grep',
+  description: '在文件中搜索内容',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      pattern: { type: 'string', description: '搜索模式(正则表达式)' },
+      path: { type: 'string', description: '搜索目录路径' },
+      include: { type: 'string', description: '文件类型过滤，如 *.ts' }
+    },
+    required: ['pattern']
+  }),
+  async execute({ pattern, path: searchPath, include }: { pattern: string; path?: string; include?: string }): Promise<ToolResult> {
+    try {
+      const regex = new RegExp(pattern, 'g');
+      const cwd = searchPath || process.cwd();
+      const results = await searchFiles(cwd, regex, include);
+      if (results.length === 0) {
+        return { output: '未找到匹配结果', title: '搜索结果', metadata: { pattern, path: cwd } };
+      }
+      return { output: results.join('\n'), title: `找到 ${results.length} 个匹配`, metadata: { pattern, path: cwd, count: results.length } };
+    } catch (error) {
+      return { output: `搜索失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
 const bashTool = {
   id: 'bash',
   description: '执行 bash 命令',
@@ -110,6 +163,7 @@ export const TOOLS: ToolSet = {
   read: readTool,
   write: writeTool,
   edit: editTool,
+  grep: grepTool,
   bash: bashTool
 } as ToolSet;
 
