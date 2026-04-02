@@ -191,10 +191,11 @@ data: [DONE]
 
 | 工具 ID | 描述 | 参数 |
 |---------|------|------|
-| `get_current_city` | 获取用户当前所在的城市 | 无 |
-| `get_weather` | 获取指定城市的天气信息 | city (string) |
-| `calculate` | 执行数学计算 | expression (string) |
-| `get_date` | 获取当前日期和时间 | 无 |
+| `read` | 读取文件内容 | path (string) |
+| `write` | 写入内容到文件 | path (string), content (string) |
+| `edit` | 编辑文件，通过替换字符串 | path (string), oldString (string), newString (string) |
+| `grep` | 在文件中搜索内容 | pattern (string), path (string, 可选), include (string, 可选) |
+| `bash` | 执行 bash 命令 | command (string), cwd (string, 可选) |
 
 ## 许可证
 
