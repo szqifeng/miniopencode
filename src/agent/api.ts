@@ -11,7 +11,7 @@ import { getSession, addMessage, getMessages, createMessage, createTextPart, mes
 import { ChatRequest } from './types.js';
 import type { LLMRes } from './llm.js';
 import { generateTitle } from './llm.js';
-import { getPrompt } from './prompts.js';
+import { getPrompt, getDefaultPrompt } from './prompts.js';
 
 const router = express.Router();
 
@@ -24,7 +24,7 @@ function setupSSE(res: Response, sessionId: string) {
 }
 
 router.post('/chat/stream', async (req: Request, res: Response) => {
-  const { sessionId, messages, system } = req.body as ChatRequest;
+  const { sessionId, messages } = req.body as ChatRequest;
 
   if (!messages?.length) {
     res.status(400).json({ error: 'messages is required' });
@@ -67,9 +67,11 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     end: () => res.end()
   };
 
+  const defaultSystem = await getDefaultPrompt();
+
   await agent.runWithStream({
     messages: llmMessages,
-    system,
+    system: defaultSystem,
     res: llmRes,
     maxLoops: 100,
     sessionId: sid,
