@@ -215,13 +215,145 @@ const webfetchTool = {
   }
 };
 
+interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'done';
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface TodoData {
+  todos: TodoItem[];
+}
+
+async function getTodoFilePath(): Promise<string> {
+  const { fileURLToPath } = await import('url');
+  const { dirname } = await import('path');
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const sessionDir = path.join(__dirname, '../../data/sessions');
+  try {
+    await fs.access(sessionDir);
+  } catch {
+    await fs.mkdir(sessionDir, { recursive: true });
+  }
+  return path.join(sessionDir, 'todos.json');
+}
+
+async function readTodoData(): Promise<TodoData> {
+  const filePath = await getTodoFilePath();
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  } catch {
+    return { todos: [] };
+  }
+}
+
+async function writeTodoData(data: TodoData): Promise<void> {
+  const filePath = await getTodoFilePath();
+  await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+const writeTodoTool = {
+  id: 'writeTodo',
+  description: '写入或更新待办事项',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      content: { type: 'string', description: '待办事项内容' },
+      status: { type: 'string', description: '状态: pending（待办）或 done（已完成）', enum: ['pending', 'done'] },
+      id: { type: 'string', description: '可选：更新已存在的待办事项ID' }
+    },
+    required: ['content', 'status']
+  }),
+  async execute({ content, status, id }: { content: string; status: 'pending' | 'done'; id?: string }): Promise<ToolResult> {
+    try {
+      const data = await readTodoData();
+      const now = Date.now();
+      
+      if (id) {
+        const todo = data.todos.find(t => t.id === id);
+        if (todo) {
+          todo.content = content;
+          todo.status = status;
+          todo.updatedAt = now;
+        } else {
+          return { output: `未找到 ID 为 ${id} 的待办事项`, title: '错误', metadata: { error: 'Todo not found' } };
+        }
+      } else {
+        data.todos.push({
+          id: `todo_${now}_${Math.random().toString(36).slice(2, 8)}`,
+          content,
+          status,
+          createdAt: now,
+          updatedAt: now
+        });
+      }
+      
+      await writeTodoData(data);
+      
+      const action = id ? '更新' : '添加';
+      return { output: `${action}待办成功`, title: `${action}成功`, metadata: { count: data.todos.length } };
+    } catch (error) {
+      return { output: `操作失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const readTodoTool = {
+  id: 'readTodo',
+  description: '读取待办事项列表',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      status: { type: 'string', description: '可选：按状态筛选 pending 或 done' }
+    }
+  }),
+  async execute({ status }: { status?: 'pending' | 'done' }): Promise<ToolResult> {
+    try {
+      const data = await readTodoData();
+      
+      let todos = data.todos;
+      if (status) {
+        todos = todos.filter(t => t.status === status);
+      }
+      
+      todos.sort((a, b) => b.createdAt - a.createdAt);
+      
+      if (todos.length === 0) {
+        return { output: '暂无待办事项', title: '待办列表为空', metadata: { count: 0 } };
+      }
+      
+      const lines = todos.map(t => {
+        const check = t.status === 'done' ? '[x]' : '[ ]';
+        const time = new Date(t.createdAt).toLocaleString('zh-CN');
+        return `${check} ${t.content} (${time}) [ID: ${t.id}]`;
+      });
+      
+      const pendingCount = data.todos.filter(t => t.status === 'pending').length;
+      const doneCount = data.todos.filter(t => t.status === 'done').length;
+      
+      return {
+        output: lines.join('\n'),
+        title: `待办列表 (待办: ${pendingCount}, 已完成: ${doneCount})`,
+        metadata: { count: todos.length, pendingCount, doneCount }
+      };
+    } catch (error) {
+      return { output: `读取失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
 export const TOOLS: ToolSet = {
   read: readTool,
   write: writeTool,
   edit: editTool,
   grep: grepTool,
   bash: bashTool,
-  webfetch: webfetchTool
+  webfetch: webfetchTool,
+  writeTodo: writeTodoTool,
+  readTodo: readTodoTool
 } as ToolSet;
 
 export async function executeTool(name: string, args: Record<string, unknown>): Promise<ToolResult | { error: string }> {

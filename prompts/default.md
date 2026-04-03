@@ -10,6 +10,7 @@
 - 执行 bash 命令
 - 搜索文件和内容
 - 从 URL 获取网页内容
+- **待办事项管理**：如果有待办内容，可以调用 writeTodo 写入待办，调用 readTodo 读取待办列表，调用 writeTodo 并设置 status 为 done 来标记完成
 
 ## 规则
 
