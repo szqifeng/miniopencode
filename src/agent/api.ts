@@ -71,7 +71,7 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
     messages: llmMessages,
     system,
     res: llmRes,
-    maxLoops: 5,
+    maxLoops: 100,
     sessionId: sid,
     addMessage: async (msg) => {
       await addMessage(sid, msg, session);
