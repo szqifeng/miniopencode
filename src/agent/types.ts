@@ -111,12 +111,23 @@ export interface Message {
   createdAt: number;
 }
 
+// ============ Todo 类型 ============
+
+export interface TodoItem {
+  id: string;
+  content: string;
+  status: 'pending' | 'done';
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ============ Session 类型 ============
 
 export interface Session {
   id: string;
   title?: string;
   messages: Message[];
+  todos: TodoItem[];
   createdAt: number;
   updatedAt: number;
 }

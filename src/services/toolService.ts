@@ -10,6 +10,7 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import https from 'node:https';
 import http from 'node:http';
+import { getCurrentSessionId } from '../agent/process.js';
 
 interface ToolResult {
   output: string;
@@ -217,6 +218,7 @@ const webfetchTool = {
 
 interface TodoItem {
   id: string;
+  sessionId: string;
   content: string;
   status: 'pending' | 'done';
   createdAt: number;
@@ -269,6 +271,11 @@ const writeTodoTool = {
   }),
   async execute({ content, status, id }: { content: string; status: 'pending' | 'done'; id?: string }): Promise<ToolResult> {
     try {
+      const sessionId = getCurrentSessionId();
+      if (!sessionId) {
+        return { output: '无法获取会话ID', title: '错误', metadata: { error: 'Session ID not available' } };
+      }
+      
       const data = await readTodoData();
       const now = Date.now();
       
@@ -284,6 +291,7 @@ const writeTodoTool = {
       } else {
         data.todos.push({
           id: `todo_${now}_${Math.random().toString(36).slice(2, 8)}`,
+          sessionId,
           content,
           status,
           createdAt: now,
@@ -312,9 +320,14 @@ const readTodoTool = {
   }),
   async execute({ status }: { status?: 'pending' | 'done' }): Promise<ToolResult> {
     try {
+      const sessionId = getCurrentSessionId();
+      if (!sessionId) {
+        return { output: '无法获取会话ID', title: '错误', metadata: { error: 'Session ID not available' } };
+      }
+      
       const data = await readTodoData();
       
-      let todos = data.todos;
+      let todos = data.todos.filter(t => t.sessionId === sessionId);
       if (status) {
         todos = todos.filter(t => t.status === status);
       }
@@ -331,8 +344,8 @@ const readTodoTool = {
         return `${check} ${t.content} (${time}) [ID: ${t.id}]`;
       });
       
-      const pendingCount = data.todos.filter(t => t.status === 'pending').length;
-      const doneCount = data.todos.filter(t => t.status === 'done').length;
+      const pendingCount = todos.filter(t => t.status === 'pending').length;
+      const doneCount = todos.filter(t => t.status === 'done').length;
       
       return {
         output: lines.join('\n'),

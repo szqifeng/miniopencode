@@ -7,6 +7,34 @@
 import { llmChat } from './llm.js';
 import type { LLMRes } from './llm.js';
 import { LLMMessage, Message, Part } from './types.js';
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+const sessionIdStorage = new AsyncLocalStorage<string>();
+
+export function getCurrentSessionId(): string | undefined {
+  return sessionIdStorage.getStore();
+}
+
+function wrapToolsWithSessionId(tools: Record<string, any> | undefined, sessionId: string): Record<string, any> | undefined {
+  if (!tools) return undefined;
+  
+  const wrapped: Record<string, any> = {};
+  for (const [name, tool] of Object.entries(tools)) {
+    if (typeof tool === 'object' && tool.execute) {
+      wrapped[name] = {
+        ...tool,
+        execute: async (args: Record<string, unknown>) => {
+          return sessionIdStorage.run(sessionId, () => {
+            return tool.execute(args);
+          });
+        }
+      };
+    } else {
+      wrapped[name] = tool;
+    }
+  }
+  return wrapped;
+}
 
 interface ProcessTaskParams {
   messages: LLMMessage[];
@@ -75,12 +103,13 @@ export async function processTaskWithStream({
   const currentMessages: LLMMessage[] = [...messages];
   let finalText = '';
   const assistantMessages: Message[] = [];
+  const wrappedTools = sessionId ? wrapToolsWithSessionId(tools as Record<string, any>, sessionId) : tools;
 
   for (let loop = 0; loop < maxLoops; loop++) {
     const result = await llmChat({
       messages: currentMessages,
       system,
-      tools,
+      tools: wrappedTools,
       toolCallStreaming: true
     }) as { fullStream: AsyncIterable<Record<string, unknown>>, finishReason?: string };
 

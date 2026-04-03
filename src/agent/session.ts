@@ -4,7 +4,7 @@
  * 职责：管理多轮对话的会话上下文
  */
 
-import { Message, Part, MessageRole, LLMMessage, Session, ToolCallPart } from './types.js';
+import { Message, Part, MessageRole, LLMMessage, Session, ToolCallPart, TodoItem } from './types.js';
 import { getStorage } from '../services/storageFactory.js';
 
 let sessionStorage: {
@@ -95,10 +95,16 @@ export async function getSession(sessionId: string): Promise<Session> {
     session = {
       id: sessionId,
       messages: [],
+      todos: [],
       createdAt: Date.now(),
       updatedAt: Date.now()
     };
     await storage.save(session);
+  }
+
+  // 兼容旧版本 Session 数据（没有 todos 字段）
+  if (!session.todos) {
+    session.todos = [];
   }
 
   return session;
