@@ -58,11 +58,18 @@ async function sendMessage() {
     assistantDiv.className = 'message assistant';
     assistantDiv.innerHTML = `
     <div class="message-role">Assistant</div>
-    <div class="message-content"><div class="typing-indicator"><span></span><span></span><span></span></div></div>
+    <div class="message-content"><div class="thinking"><span class="typing-indicator"><span></span><span></span><span></span></span><span class="thinking-text">Thinking...</span></div><div class="text-content"></div></div>
   `;
     messagesContainer.appendChild(assistantDiv);
     messagesContainer.scrollTop = messagesContainer.scrollHeight;
     const contentDiv = assistantDiv.querySelector('.message-content');
+    const thinkingDiv = assistantDiv.querySelector('.thinking');
+    const textContentDiv = assistantDiv.querySelector('.text-content');
+    if (!thinkingDiv || !textContentDiv) {
+        console.error('Elements not found:', { thinkingDiv, textContentDiv });
+        setInputEnabled(true);
+        return;
+    }
     try {
         const response = await fetch('http://localhost:3000/api/web/chat/stream', {
             method: 'POST',
@@ -82,7 +89,6 @@ async function sendMessage() {
             input.focus();
             return;
         }
-        contentDiv.innerHTML = '';
         const reader = response.body?.getReader();
         const decoder = new TextDecoder();
         let fullText = '';
@@ -101,14 +107,26 @@ async function sendMessage() {
                         try {
                             const jsonStr = trimmed.slice(6);
                             const data = JSON.parse(jsonStr);
-                            if (data.type === 'text-delta') {
-                                const delta = data.textDelta || data.text || '';
+                            if (data.type === 'reasoning-delta') {
+                                if (thinkingDiv && thinkingDiv.style.display !== 'none') {
+                                    thinkingDiv.style.display = 'none';
+                                }
+                                const delta = data.text || '';
                                 fullText += delta;
-                                contentDiv.textContent = fullText;
+                                textContentDiv.textContent = fullText;
+                                messagesContainer.scrollTop = messagesContainer.scrollHeight;
+                            }
+                            else if (data.type === 'text-delta') {
+                                if (thinkingDiv && thinkingDiv.style.display !== 'none') {
+                                    thinkingDiv.style.display = 'none';
+                                }
+                                const delta = data.text || '';
+                                fullText += delta;
+                                textContentDiv.textContent = fullText;
                                 messagesContainer.scrollTop = messagesContainer.scrollHeight;
                             }
                             else if (data.type === 'error') {
-                                contentDiv.textContent = `错误: ${JSON.stringify(data.error)}`;
+                                textContentDiv.textContent = `错误: ${JSON.stringify(data.error)}`;
                                 return;
                             }
                         }
@@ -120,11 +138,11 @@ async function sendMessage() {
             }
         }
         if (!fullText) {
-            contentDiv.textContent = '(无响应)';
+            textContentDiv.textContent = '(无响应)';
         }
     }
     catch (e) {
-        contentDiv.textContent = `错误: ${e.message}`;
+        textContentDiv.textContent = `错误: ${e.message}`;
     }
     setInputEnabled(true);
     input.focus();

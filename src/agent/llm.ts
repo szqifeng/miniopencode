@@ -55,3 +55,17 @@ export async function llmChat(params: LLMChatParams) {
 
   return result as unknown;
 }
+
+export async function generateTitle(userMessage: string, systemPrompt: string): Promise<string> {
+  const provider = createProvider();
+
+  const result = streamText({
+    model: provider(MODEL),
+    system: systemPrompt,
+    messages: [{ role: 'user', content: userMessage }],
+    maxOutputTokens: 50
+  } as Parameters<typeof streamText>[0]);
+
+  const text = await (result as unknown as { text: Promise<string> }).text;
+  return text || '新会话';
+}

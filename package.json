@@ -8,7 +8,7 @@
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "ui:build": "cd src/ui && npm run build && cp renderer/*.html dist-ui/renderer/",
+    "ui:build": "cd src/ui && npm run build && cp renderer/*.html ../../dist-ui/renderer/",
     "ui:dev": "npm run ui:build && ./src/ui/node_modules/.bin/electron dist-ui --no-sandbox",
     "ui:start": "./src/ui/node_modules/.bin/electron dist-ui --no-sandbox",
     "ui:stop": "pkill -f electron || true"

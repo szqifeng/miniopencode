@@ -158,3 +158,12 @@ export async function clearSession(sessionId: string): Promise<boolean> {
   const storage = await getSessionStorage();
   return await storage.delete(sessionId);
 }
+
+export async function updateSessionTitle(sessionId: string, title: string): Promise<void> {
+  const storage = await getSessionStorage();
+  const session = await storage.get(sessionId);
+  if (session) {
+    session.title = title;
+    await storage.save(session);
+  }
+}

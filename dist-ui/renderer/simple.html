@@ -266,7 +266,7 @@
       setInputEnabled(false);
 
       let contentDiv = null;
-      let reasoningDiv = null;
+      let thinkingDiv = null;
 
       try {
         console.log('Sending request...');
@@ -311,24 +311,27 @@
                 console.log('Event:', data.type, data);
 
                 if (data.type === 'reasoning-start') {
-                  if (!reasoningDiv) {
-                    reasoningDiv = addThinking('');
-                  }
-                  if (reasoningDiv) {
-                    reasoningDiv.textContent = '';
+                  if (!contentDiv) {
+                    contentDiv = addThinking('');
+                    thinkingDiv = messagesContainer.lastElementChild?.querySelector('.thinking') as HTMLElement;
                   }
                 } else if (data.type === 'reasoning-delta') {
-                  if (!reasoningDiv) {
-                    reasoningDiv = addThinking('');
+                  if (!contentDiv) {
+                    contentDiv = addThinking('');
+                    thinkingDiv = messagesContainer.lastElementChild?.querySelector('.thinking') as HTMLElement;
                   }
-                  if (reasoningDiv) {
-                    reasoningDiv.textContent += (data.textDelta || data.text || '');
+                  if (thinkingDiv && thinkingDiv.style.display !== 'none') {
+                    thinkingDiv.style.display = 'none';
+                  }
+                  const delta = data.textDelta || data.text || '';
+                  fullText += delta;
+                  if (contentDiv) {
+                    contentDiv.textContent = fullText;
                     messagesContainer.scrollTop = messagesContainer.scrollHeight;
                   }
                 } else if (data.type === 'reasoning-end') {
-                  if (reasoningDiv) {
-                    reasoningDiv.parentElement?.remove();
-                    reasoningDiv = null;
+                  if (thinkingDiv) {
+                    thinkingDiv.style.display = 'none';
                   }
                 } else if (data.type === 'text-start') {
                   const textDiv = document.createElement('div');

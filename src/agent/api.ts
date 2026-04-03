@@ -7,9 +7,11 @@
 import express, { Request, Response } from 'express';
 import { createAgent } from './index.js';
 import { authMiddleware } from '../middleware/auth.js';
-import { getSession, addMessage, getMessages, createMessage, createTextPart, messagesToLLMFormat, clearSession } from './session.js';
+import { getSession, addMessage, getMessages, createMessage, createTextPart, messagesToLLMFormat, clearSession, updateSessionTitle } from './session.js';
 import { ChatRequest } from './types.js';
 import type { LLMRes } from './llm.js';
+import { generateTitle } from './llm.js';
+import { getPrompt } from './prompts.js';
 
 const router = express.Router();
 
@@ -39,7 +41,17 @@ router.post('/chat/stream', async (req: Request, res: Response) => {
 
   if (userMessageParts.length > 0) {
     const userMessage = createMessage('user', userMessageParts);
+    const isFirstMessage = session.messages.length === 0;
     await addMessage(sid, userMessage, session);
+
+    if (isFirstMessage) {
+      const userContent = userMessageParts.map(p => (p as { type: 'text'; content: string }).content).join('\n');
+      getPrompt('title').then(promptTemplate => {
+        generateTitle(userContent, promptTemplate || '').then(title => {
+          updateSessionTitle(sid, title);
+        }).catch(() => {});
+      }).catch(() => {});
+    }
   }
 
   // 获取完整对话历史
