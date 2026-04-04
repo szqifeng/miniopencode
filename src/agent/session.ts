@@ -19,8 +19,11 @@ async function getSessionStorage() {
   const fs = await import('fs/promises');
   const path = await import('path');
   const { fileURLToPath } = await import('url');
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const __filename = fileURLToPath(import.meta.url);
+  const __dirname = path.dirname(__filename);
   const DATA_DIR = path.join(__dirname, '../../data/sessions');
+
+  console.log('session.ts DATA_DIR:', DATA_DIR);
 
   async function ensureDir() {
     try {

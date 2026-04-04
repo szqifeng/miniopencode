@@ -57,15 +57,25 @@ export async function llmChat(params: LLMChatParams) {
 }
 
 export async function generateTitle(userMessage: string, systemPrompt: string): Promise<string> {
-  const provider = createProvider();
+  try {
+    const provider = createProvider();
 
-  const result = streamText({
-    model: provider(MODEL),
-    system: systemPrompt,
-    messages: [{ role: 'user', content: userMessage }],
-    maxOutputTokens: 50
-  } as Parameters<typeof streamText>[0]);
+    const result = streamText({
+      model: provider(MODEL),
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userMessage }],
+      maxOutputTokens: 50
+    } as Parameters<typeof streamText>[0]);
 
-  const text = await (result as unknown as { text: Promise<string> }).text;
-  return text || '新会话';
+    let text = '';
+    for await (const delta of result.fullStream) {
+      if (delta.type === 'text-delta' && (delta as any).text) {
+        text += (delta as any).text;
+      }
+    }
+    return text || '新会话';
+  } catch (error) {
+    console.error('generateTitle error:', error);
+    return '新会话';
+  }
 }

@@ -8,7 +8,9 @@
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
     "typecheck": "tsc --noEmit",
-    "ui:build": "cd src/ui && npm run build && cp renderer/*.html ../../dist-ui/renderer/",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:ui": "cd src/ui && npm run build && cp renderer/*.html ../../dist-ui/renderer/",
     "ui:dev": "npm run ui:build && ./src/ui/node_modules/.bin/electron dist-ui --no-sandbox",
     "ui:start": "./src/ui/node_modules/.bin/electron dist-ui --no-sandbox",
     "ui:stop": "pkill -f electron || true"
@@ -39,7 +41,9 @@
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
     "tsx": "^4.21.0",
-    "typescript": "^6.0.2"
+    "typescript": "^6.0.2",
+    "vitest": "^2.1.0",
+    "node-fetch": "^3.3.2"
   },
   "engines": {
     "node": ">=22.0.0"

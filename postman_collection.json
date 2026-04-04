@@ -56,6 +56,51 @@
           }
         }
       ]
+    },
+    {
+      "name": "Session - 会话管理",
+      "item": [
+        {
+          "name": "GET /api/web/sessions (获取所有会话)",
+          "request": {
+            "method": "GET",
+            "url": { "raw": "{{baseUrl}}/api/web/sessions", "host": ["{{baseUrl}}"], "path": ["api", "web", "sessions"] },
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ]
+          }
+        },
+        {
+          "name": "GET /api/web/chat/session/:sessionId (获取单个会话)",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/web/chat/session/:sessionId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "web", "chat", "session", ":sessionId"],
+              "variable": [{ "key": "sessionId", "value": "test_session_001" }]
+            },
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ]
+          }
+        },
+        {
+          "name": "DELETE /api/web/chat/session/:sessionId (删除会话)",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/web/chat/session/:sessionId",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "web", "chat", "session", ":sessionId"],
+              "variable": [{ "key": "sessionId", "value": "test_session_001" }]
+            },
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ]
+          }
+        }
+      ]
     }
   ]
 }
