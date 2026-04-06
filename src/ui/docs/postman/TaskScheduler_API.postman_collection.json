@@ -1,0 +1,213 @@
+{
+  "info": {
+    "name": "TaskScheduler API",
+    "description": "任务调度平台 API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8000/api"
+    }
+  ],
+  "item": [
+    {
+      "name": "Tools - 工具管理",
+      "item": [
+        {
+          "name": "GET /tools - 获取工具列表",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tools",
+            "description": "获取系统中所有工具的列表"
+          }
+        },
+        {
+          "name": "GET /tools/:id - 获取工具详情",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tools/:id",
+            "description": "根据 ID 获取工具详情"
+          }
+        },
+        {
+          "name": "POST /tools - 创建工具",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tools",
+            "description": "创建新工具",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "name": "新工具名称",
+                "type": "script",
+                "description": "工具描述"
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /tools/:id - 更新工具",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/tools/:id",
+            "description": "更新工具信息",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "name": "更新后的名称",
+                "type": "api",
+                "description": "更新后的描述",
+                "status": "active"
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /tools/:id - 删除工具",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/tools/:id",
+            "description": "删除工具"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tasks - 任务管理",
+      "item": [
+        {
+          "name": "GET /tasks - 获取任务列表",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tasks",
+            "description": "获取所有任务的列表"
+          }
+        },
+        {
+          "name": "GET /tasks/:id - 获取任务详情",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/tasks/:id",
+            "description": "根据 ID 获取任务详情"
+          }
+        },
+        {
+          "name": "POST /tasks - 创建任务",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks",
+            "description": "创建新任务",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "name": "新任务名称",
+                "toolId": "1",
+                "cronExpression": "0 0 * * *"
+              }
+            }
+          }
+        },
+        {
+          "name": "PUT /tasks/:id - 更新任务",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/tasks/:id",
+            "description": "更新任务信息",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "name": "更新后的任务名称",
+                "toolId": "1",
+                "cronExpression": "0 2 * * *"
+              }
+            }
+          }
+        },
+        {
+          "name": "DELETE /tasks/:id - 删除任务",
+          "request": {
+            "method": "DELETE",
+            "url": "{{baseUrl}}/tasks/:id",
+            "description": "删除任务"
+          }
+        },
+        {
+          "name": "POST /tasks/:id/run - 立即运行任务",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/:id/run",
+            "description": "立即执行任务"
+          }
+        },
+        {
+          "name": "POST /tasks/:id/enable - 启用任务",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/:id/enable",
+            "description": "启用任务"
+          }
+        },
+        {
+          "name": "POST /tasks/:id/disable - 禁用任务",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/tasks/:id/disable",
+            "description": "禁用任务"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat - AI 聊天",
+      "item": [
+        {
+          "name": "POST /chat - 发送消息",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/chat",
+            "description": "发送消息给 AI 助手",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "message": "查询任务执行状态"
+              }
+            }
+          }
+        },
+        {
+          "name": "GET /chat/history - 获取聊天历史",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/chat/history?limit=20",
+            "description": "获取聊天历史记录"
+          }
+        },
+        {
+          "name": "GET /chat/settings - 获取聊天设置",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/chat/settings",
+            "description": "获取 AI 聊天设置"
+          }
+        },
+        {
+          "name": "PUT /chat/settings - 更新聊天设置",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/chat/settings",
+            "description": "更新 AI 聊天设置",
+            "body": {
+              "mode": "raw",
+              "raw": {
+                "model": "gpt-4",
+                "temperature": 0.7,
+                "maxTokens": 1000
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
