@@ -254,7 +254,7 @@ export default function Dashboard() {
     <>
       <div className="top-line" />
     <Layout className="dashboard-container">
-      <Sider width={260} className="task-sider" style={{ overflow: 'hidden' }}>
+      <Sider width={420} className="task-sider" style={{ overflow: 'hidden' }}>
         <div className="sider-header">
           <span>任务列表</span>
           <Button type="text" size="small" icon={<PlusOutlined />} onClick={handleAddTask} />
