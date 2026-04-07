@@ -1,3 +1,36 @@
+export interface Task {
+  id: string;
+  name: string;
+  inputFilePath: string;
+  schedule: 'once' | 'daily' | 'weekly';
+  scheduleTime?: string;
+  status: 'active' | 'paused' | 'error';
+  analysisGoal?: string;
+  outputFormat: 'markdown';
+  lastRunAt?: string;
+  nextRunAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Run {
+  id: string;
+  taskId: string;
+  status: 'running' | 'success' | 'failed';
+  reportId?: string;
+  startedAt: string;
+  finishedAt?: string;
+  errorMessage?: string;
+}
+
+export interface Report {
+  id: string;
+  taskId: string;
+  runId: string;
+  contentMarkdown: string;
+  createdAt: string;
+}
+
 export interface Tool {
   id: string;
   name: string;
@@ -8,20 +41,12 @@ export interface Tool {
   updatedAt: string;
 }
 
-export interface Task {
+export interface KnowledgeItem {
   id: string;
-  name: string;
-  toolId: string;
-  toolName: string;
-  status: 'enabled' | 'disabled';
-  schedule: {
-    enabled: boolean;
-    type: 'daily' | 'weekly';
-    time: string;
-    weekday?: number;
-  };
-  lastRunTime: string;
-  nextRunTime: string;
+  title: string;
+  content: string;
+  category?: string;
+  tags?: string[];
   createdAt: string;
   updatedAt: string;
 }
@@ -39,15 +64,132 @@ export interface ChatSettings {
   maxTokens: number;
 }
 
-export interface KnowledgeItem {
-  id: string;
-  title: string;
+export type ChatStreamMessageRole = 'user' | 'assistant';
+
+export interface ChatStreamMessage {
+  role: ChatStreamMessageRole;
   content: string;
-  category?: string;
-  tags?: string[];
-  createdAt: string;
-  updatedAt: string;
 }
+
+export interface ChatStreamRequest {
+  sessionId: string;
+  messages: ChatStreamMessage[];
+  useTools: boolean;
+}
+
+export interface ChatStreamStartEvent {
+  type: 'start';
+}
+
+export interface ChatStreamStartStepEvent {
+  type: 'start-step';
+  request: {
+    body: Record<string, unknown>;
+    warnings?: unknown[];
+  };
+}
+
+export interface ChatStreamReasoningStartEvent {
+  type: 'reasoning-start';
+  id: string;
+}
+
+export interface ChatStreamReasoningDeltaEvent {
+  type: 'reasoning-delta';
+  id: string;
+  text: string;
+  providerMetadata?: Record<string, unknown>;
+}
+
+export interface ChatStreamReasoningEndEvent {
+  type: 'reasoning-end';
+  id: string;
+}
+
+export interface ChatStreamTextStartEvent {
+  type: 'text-start';
+  id: string;
+}
+
+export interface ChatStreamTextDeltaEvent {
+  type: 'text-delta';
+  id: string;
+  text: string;
+}
+
+export interface ChatStreamTextEndEvent {
+  type: 'text-end';
+  id: string;
+}
+
+export interface ChatStreamToolInputStartEvent {
+  type: 'tool-input-start';
+  id: string;
+  toolName: string;
+  dynamic?: boolean;
+}
+
+export interface ChatStreamToolInputDeltaEvent {
+  type: 'tool-input-delta';
+  id: string;
+  delta: string;
+}
+
+export interface ChatStreamToolInputEndEvent {
+  type: 'tool-input-end';
+  id: string;
+}
+
+export interface ChatStreamToolCallEvent {
+  type: 'tool-call';
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+}
+
+export interface ChatStreamToolResultEvent {
+  type: 'tool-result';
+  toolCallId: string;
+  toolName: string;
+  input: Record<string, unknown>;
+  output: unknown;
+  dynamic?: boolean;
+}
+
+export interface ChatStreamFinishStepEvent {
+  type: 'finish-step';
+  finishReason: 'tool-calls' | 'stop' | string;
+  rawFinishReason?: string;
+  usage?: Record<string, unknown>;
+  totalUsage?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  providerMetadata?: Record<string, unknown>;
+}
+
+export interface ChatStreamFinishEvent {
+  type: 'finish';
+  finishReason: 'tool-calls' | 'stop' | string;
+  rawFinishReason?: string;
+  usage?: Record<string, unknown>;
+  totalUsage?: Record<string, unknown>;
+}
+
+export type ChatStreamEvent =
+  | ChatStreamStartEvent
+  | ChatStreamStartStepEvent
+  | ChatStreamReasoningStartEvent
+  | ChatStreamReasoningDeltaEvent
+  | ChatStreamReasoningEndEvent
+  | ChatStreamTextStartEvent
+  | ChatStreamTextDeltaEvent
+  | ChatStreamTextEndEvent
+  | ChatStreamToolInputStartEvent
+  | ChatStreamToolInputDeltaEvent
+  | ChatStreamToolInputEndEvent
+  | ChatStreamToolCallEvent
+  | ChatStreamToolResultEvent
+  | ChatStreamFinishStepEvent
+  | ChatStreamFinishEvent;
 
 export interface Response<T = any> {
   success: boolean;

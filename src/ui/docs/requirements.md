@@ -1,389 +1,222 @@
-# 任务调度平台 - 需求文档
+# UI 当前实现说明
 
-## 一、项目概述
+## 1. 产品定位
 
-### 1.1 项目背景
+`task-scheduler-vite` 当前不是通用后台，也不是开放式聊天助手。
 
-本地运行的「AI 任务工作台」，让用户把重复工作沉淀成可一键执行、可自动运行的任务。
+当前 UI 的唯一主线是：
 
-核心概念：任务、工具、知识库、聊天
-
-### 1.2 技术栈
-
-| 类别 | 技术选型 |
-|------|---------|
-| 前端框架 | Vite + React 18 |
-| UI 组件库 | Ant Design 5.x |
-| 开发语言 | TypeScript |
-| 渲染模式 | CSR（客户端渲染） |
-| 样式方案 | Ant Design 原生样式 + LESS |
-
-### 1.3 项目特点
-
-- 企业级 Ant Design Pro 风格
-- 5 个左右业务页面
-- 前后端分离，后端提供 RESTful API
-- 前端使用 Mock 数据进行开发
-- 支持后期封装为桌面客户端应用
+- 任务是唯一入口
+- 聊天只用于创建和编辑任务
+- 报告和运行记录都附着在任务下
+- 首版只处理表格分析任务
+- 输入只支持 `CSV / XLSX`
+- 输出统一为 `Markdown`
 
 ---
 
-## 二、页面规划
+## 2. 当前页面结构
 
-### 2.1 页面清单
+当前应用入口只有一个主工作台页面，由 `src/pages/dashboard/index.tsx` 渲染。
 
-| 序号 | 页面名称 | 页面路径 | 优先级 | 状态 |
-|------|---------|---------|-------|------|
-| 1 | 首页 | `/` | 高 | 开发中 |
-| 2 | （待确认） | / | - | - |
-| 3 | （待确认） | / | - | - |
-| 4 | （待确认） | / | - | - |
-| 5 | （待确认） | / | - | - |
+### 2.1 左侧任务栏
 
-### 2.2 首页模块状态
+左侧栏承担入口职责，包含：
 
-| 模块 | 组件 | 状态 |
-|------|------|------|
-| 任务管理 | `index.tsx` 内嵌 | ✅ 已完成 |
-| 工具管理 | `index.tsx` 内嵌 | ✅ 已完成 |
-| 知识库 | `index.tsx` 内嵌 | ✅ 已完成 |
-| AI 聊天 | `index.tsx` 内嵌 | ✅ 已完成 |
+- 产品定位说明
+- 新建任务按钮
+- 任务总数 / 运行中 / 报告累计指标
+- 搜索与状态筛选
+- 任务列表
+
+任务列表项展示：
+
+- 任务名称
+- 当前状态
+- 分析目标摘要
+- 调度方式与时间说明
+- 输入文件名
+- 最后更新时间
+
+### 2.2 右侧任务详情区
+
+右侧展示当前选中任务的完整工作区，包含：
+
+- 任务 Hero 区
+- 四个摘要卡片
+- 失败告警区
+- 任务简报
+- 最新报告 Markdown 预览
+- 报告历史
+- 最近运行记录
+- 执行规则说明
+- 快捷操作
+
+这里不再使用“后台 Tabs 切页”的组织方式，而是按任务上下文直接展开。
 
 ---
 
-## 三、首页详细设计
+## 3. 创建 / 编辑任务流程
 
-### 3.0 首页模块概览
+任务创建与编辑都通过同一个弹层完成。
 
-首页包含四个核心模块：
+### 3.1 弹层布局
 
-| 模块 | 说明 |
-|------|------|
-| 任务 | 任务列表、执行记录、自动执行 |
-| 工具 | 工具列表、工具配置 |
-| 知识库 | 知识库内容管理 |
-| 聊天 | AI 对话辅助 |
+- 左侧：聊天输入区
+- 右侧：结构化任务草稿 + 表单
 
-### 3.1 页面布局
+### 3.2 聊天区职责
 
-```
-┌────────────────────────────────────────────────────────────────────────┐
-│  任务列表 (左侧栏)   │    主内容区 (任务空间)       │   右侧面板     │
-│  ┌──────────────┐   │  ┌─────────────────────┐   │  ┌─────────┐ │
-│  │ + 新建任务   │   │  │  任务标题 + 操作      │   │  │ 工具    │ │
-│  │              │   │  │  关联工具: xxx       │   │  │ 知识库  │ │
-│  │ 任务1 ✓     │   │  │  Cron: xxx           │   │  │ 助手    │ │
-│  │ 任务2       │   │  ├─────────────────────┤   │  └─────────┘ │
-│  │ 任务3       │   │  │ 已绑定工具│已绑定知识 │   │              │
-│  └──────────────┘   │  └─────────────────────┘   │              │
-└─────────────────────┴───────────────────────────┴──────────────┘
-```
+聊天区不是开放式问答，只做任务草稿解析。
 
-**布局说明：**
-- 左侧栏（220px）：任务列表，快速切换任务
-- 主内容区：当前任务详情 + 已绑定工具/知识库
-- 右侧面板（300px）：工具/知识库/助手 Tab 切换，可绑定到当前任务
+用户可以直接输入：
 
-### 3.2 工具维护模块
+- 文件路径
+- 执行频率
+- 时间信息
+- 希望输出的分析结果
 
-#### 功能说明
+当前实现会从输入里提取：
 
-- 展示系统中已配置的工具列表
-- 支持新建、编辑、删除工具
-- 显示工具类型和状态
+- 文件路径，例如 `sales-weekly.xlsx`
+- 调度方式，`once / daily / weekly`
+- 时间说明，例如 `18:00`、`周一 09:00`
+- 分析目标
+- 推断任务名
 
-#### UI 形式
+如果信息不完整，聊天区会提示还缺哪些字段。
 
-- 卡片网格布局（每行 3-4 张卡片）
-- 卡片内容：工具名称、类型标签、状态徽章
-- 操作按钮：编辑、删除
+### 3.3 右侧结构化草稿
 
-#### 数据结构
+右侧始终显示当前任务草稿，包含：
 
-```typescript
-interface Tool {
-  id: string;           // 工具 ID
-  name: string;         // 工具名称
-  type: 'script' | 'api' | 'shell';  // 工具类型
-  description: string;  // 工具描述
-  status: 'active' | 'inactive';     // 状态
-  createdAt: string;    // 创建时间
-  updatedAt: string;    // 更新时间
+- 任务名称
+- 输入文件路径
+- 执行方式
+- 时间说明
+- 分析目标
+- 输出格式
+- 当前状态
+
+输出格式固定为 `markdown`，不可编辑。
+
+---
+
+## 4. 当前数据模型
+
+### 4.1 Task
+
+```ts
+type Task = {
+  id: string
+  name: string
+  inputFilePath: string
+  schedule: "once" | "daily" | "weekly"
+  scheduleTime?: string
+  status: "active" | "paused" | "error"
+  analysisGoal?: string
+  outputFormat: "markdown"
+  lastRunAt?: string
+  nextRunAt?: string
+  createdAt: string
+  updatedAt: string
 }
 ```
 
-### 3.3 任务模块
+### 4.2 Run
 
-#### 功能说明
-
-- 展示所有配置的任务列表
-- 支持任务操作：启动、立即运行、禁用、编辑
-- 显示任务状态、执行时间等信息
-
-#### UI 形式
-
-- 卡片列表布局
-- 卡片内容：任务名称、关联工具、执行周期、状态、下次执行时间
-- 操作按钮：启动、立即运行、禁用、编辑
-
-#### 数据结构
-
-```typescript
-interface Task {
-  id: string;              // 任务 ID
-  name: string;            // 任务名称
-  toolId: string;          // 关联工具 ID
-  toolName: string;        // 关联工具名称
-  cronExpression: string;  // Cron 表达式
-  status: 'enabled' | 'disabled';   // 状态
-  lastRunTime: string;     // 上次执行时间
-  nextRunTime: string;     // 下次执行时间
-  createdAt: string;       // 创建时间
-  updatedAt: string;       // 更新时间
+```ts
+type Run = {
+  id: string
+  taskId: string
+  status: "running" | "success" | "failed"
+  startedAt: string
+  finishedAt?: string
+  errorMessage?: string
+  reportId?: string
 }
 ```
 
-### 3.4 AI 聊天窗口
+### 4.3 Report
 
-#### 功能说明
-
-- 提供 AI 助手对话功能
-- 支持设置聊天参数
-- 保存聊天历史
-
-#### UI 形式
-
-- 固定在右侧区域
-- 聊天区域：消息气泡展示
-- 输入区域：文本输入框 + 发送按钮
-- 设置按钮：配置 AI 参数
-
-#### 数据结构
-
-```typescript
-interface ChatMessage {
-  id: string;           // 消息 ID
-  role: 'user' | 'assistant';  // 发送者角色
-  content: string;      // 消息内容
-  timestamp: string;    // 时间戳
-}
-
-interface ChatSettings {
-  model: string;        // AI 模型
-  temperature: number;  // 温度参数
-  maxTokens: number;    // 最大 tokens
-}
-```
-
-### 3.5 知识库模块（新增）
-
-#### 功能说明
-
-- 管理知识库内容
-- 支持文档的上传、编辑、删除
-- 为任务提供上下文知识支持
-
-#### UI 形式
-
-- 文档列表布局
-- 支持新建文档
-- 文档内容编辑
-
-#### 数据结构
-
-```typescript
-interface KnowledgeItem {
-  id: string;           // 知识项 ID
-  title: string;        // 标题
-  content: string;      // 内容
-  category?: string;     // 分类
-  tags?: string[];       // 标签
-  createdAt: string;     // 创建时间
-  updatedAt: string;     // 更新时间
+```ts
+type Report = {
+  id: string
+  taskId: string
+  runId: string
+  contentMarkdown: string
+  createdAt: string
 }
 ```
 
 ---
 
-## 四、API 接口设计
+## 5. 当前运行逻辑
 
-### 4.1 知识库
+当前 UI 使用 `src/mock/index.ts` 中的 mock 数据与 mock API。
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/knowledge | 获取知识列表 |
-| GET | /api/knowledge/:id | 获取知识详情 |
-| POST | /api/knowledge | 创建知识 |
-| PUT | /api/knowledge/:id | 更新知识 |
-| DELETE | /api/knowledge/:id | 删除知识 |
+### 5.1 手动运行任务
 
-### 4.2 工具管理
+点击“立即运行”后会触发：
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/tools | 获取工具列表 |
-| GET | /api/tools/:id | 获取工具详情 |
-| POST | /api/tools | 创建工具 |
-| PUT | /api/tools/:id | 更新工具 |
-| DELETE | /api/tools/:id | 删除工具 |
+1. 生成一条新的 `Run`
+2. 生成一条新的 `Report`
+3. 更新任务的 `lastRunAt`
+4. 根据调度方式刷新 `nextRunAt`
 
-### 4.3 任务管理
+### 5.2 任务状态
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| GET | /api/tasks | 获取任务列表 |
-| GET | /api/tasks/:id | 获取任务详情 |
-| POST | /api/tasks | 创建任务 |
-| PUT | /api/tasks/:id | 更新任务 |
-| DELETE | /api/tasks/:id | 删除任务 |
-| POST | /api/tasks/:id/run | 立即运行任务 |
-| POST | /api/tasks/:id/enable | 启用任务 |
-| POST | /api/tasks/:id/disable | 禁用任务 |
+- `active`：正常参与调度，可手动运行
+- `paused`：暂停状态
+- `error`：最近一次运行或配置出现异常，需要人工处理
 
-### 4.4 AI 聊天
+### 5.3 错误展示
 
-| 方法 | 路径 | 说明 |
-|------|------|------|
-| POST | /api/chat | 发送消息 |
-| GET | /api/chat/history | 获取聊天历史 |
-| GET | /api/chat/settings | 获取聊天设置 |
-| PUT | /api/chat/settings | 更新聊天设置 |
+如果任务状态为 `error`，详情页会显示最近失败原因，用于提示用户修正输入文件或配置。
 
 ---
 
-## 五、Mock 数据
+## 6. 视觉与交互方向
 
-### 5.1 工具 Mock 数据
+当前页面设计原则：
 
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "1",
-      "name": "Python 数据清洗脚本",
-      "type": "script",
-      "description": "用于清洗业务数据的 Python 脚本",
-      "status": "active",
-      "createdAt": "2024-01-01T00:00:00Z",
-      "updatedAt": "2024-01-10T00:00:00Z"
-    },
-    {
-      "id": "2",
-      "name": "用户同步 API",
-      "type": "api",
-      "description": "从第三方系统同步用户数据",
-      "status": "active",
-      "createdAt": "2024-01-02T00:00:00Z",
-      "updatedAt": "2024-01-12T00:00:00Z"
-    },
-    {
-      "id": "3",
-      "name": "日志备份脚本",
-      "type": "shell",
-      "description": "定期备份系统日志到存储",
-      "status": "inactive",
-      "createdAt": "2024-01-03T00:00:00Z",
-      "updatedAt": "2024-01-15T00:00:00Z"
-    }
-  ]
-}
-```
-
-### 5.2 任务 Mock 数据
-
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "id": "1",
-      "name": "每日数据清洗",
-      "toolId": "1",
-      "toolName": "Python 数据清洗脚本",
-      "cronExpression": "0 2 * * *",
-      "status": "enabled",
-      "lastRunTime": "2024-01-14T02:00:00Z",
-      "nextRunTime": "2024-01-15T02:00:00Z",
-      "createdAt": "2024-01-01T00:00:00Z",
-      "updatedAt": "2024-01-10T00:00:00Z"
-    },
-    {
-      "id": "2",
-      "name": "用户数据同步",
-      "toolId": "2",
-      "toolName": "用户同步 API",
-      "cronExpression": "0 */6 * * *",
-      "status": "enabled",
-      "lastRunTime": "2024-01-14T12:00:00Z",
-      "nextRunTime": "2024-01-14T18:00:00Z",
-      "createdAt": "2024-01-02T00:00:00Z",
-      "updatedAt": "2024-01-12T00:00:00Z"
-    },
-    {
-      "id": "3",
-      "name": "日志备份",
-      "toolId": "3",
-      "toolName": "日志备份脚本",
-      "cronExpression": "0 0 * * *",
-      "status": "disabled",
-      "lastRunTime": "2024-01-13T00:00:00Z",
-      "nextRunTime": "-",
-      "createdAt": "2024-01-03T00:00:00Z",
-      "updatedAt": "2024-01-15T00:00:00Z"
-    }
-  ]
-}
-```
-
-### 5.3 聊天 Mock 数据
-
-```json
-{
-  "success": true,
-  "data": {
-    "reply": "你好！我是 AI 助手，可以帮助你管理任务和工具。有什么我可以帮你的吗？",
-    "timestamp": "2024-01-14T10:00:00Z"
-  }
-}
-```
+- 不做 Ant Design Pro 式重后台布局
+- 保持任务主线集中
+- 页面只围绕一个选中任务展开
+- 聊天与表单并列，确保可控
+- 使用轻玻璃质感、浅色暖冷渐变背景
+- 兼容桌面与移动端缩放
 
 ---
 
-## 六、Postman Collection
+## 7. 当前代码对应关系
 
-见附件：`postman/TaskScheduler_API.postman_collection.json`
+### 7.1 入口与主题
 
----
+- `src/App.tsx`
+- `src/index.css`
+- `src/App.css`
 
-## 七、待确认事项
+### 7.2 主页面
 
-### 7.1 其他页面功能
+- `src/pages/dashboard/index.tsx`
+- `src/pages/dashboard/index.css`
 
-| 页面 | 功能描述 | 状态 |
-|------|---------|------|
-| 页面 2 | （待确认） | 待确认 |
-| 页面 3 | （待确认） | 待确认 |
-| 页面 4 | （待确认） | 待确认 |
-| 页面 5 | （待确认） | 待确认 |
+### 7.3 数据与 Mock
 
-### 7.2 功能细节
-
-- [ ] 任务是否需要分组/分类？
-- [ ] 工具类型是否还有其他？（如：Python/Java/Node 等）
-- [ ] 聊天窗口是否需要支持多轮对话？
-- [ ] 是否需要任务执行日志/历史？
-
-### 7.3 后续扩展
-
-- [ ] 客户端封装方案（Tauri / Electron）
-- [ ] 用户认证与权限管理
-- [ ] 国际化支持
+- `src/services/types.ts`
+- `src/mock/index.ts`
 
 ---
 
-## 八、版本历史
+## 8. 明确不做
 
-| 版本 | 日期 | 说明 |
-|------|------|------|
-| 0.1.0 | 2024-01-14 | 初始版本，包含首页设计 |
+当前 UI 文档明确排除以下方向：
+
+- 顶级聊天页
+- 顶级报告页
+- 插件市场
+- 通用工作流编排器
+- 邮件分析或自动回复
+- 系统监控类产品形态
+- 多页面后台管理台式信息架构

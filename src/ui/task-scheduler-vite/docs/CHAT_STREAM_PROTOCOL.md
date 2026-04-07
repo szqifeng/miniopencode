@@ -1,161 +1,186 @@
-# 聊天流式响应协议
+# Chat Stream Interface Schema
 
-## 概述
+## 已确认接口
 
-前端通过 SSE (Server-Sent Events) 接收后端的流式响应，采用 JSON 帧格式进行数据传输。
-
-## 请求格式
-
+```bash
+curl --location 'http://localhost:3000/api/web/chat/stream' \
+  --header 'Content-Type: application/json' \
+  --header 'X-API-Key: om_fixed_api_key_12345' \
+  --data '{
+    "sessionId": "test_session_001999",
+    "messages": [{"role": "user", "content": "深圳天气怎么样，然后看看深圳的邮编"}],
+    "useTools": true
+  }'
 ```
-POST /api/web/chat/stream
-Content-Type: application/json
-X-API-Key: <API_KEY>
 
+---
+
+## Request Schema
+
+### JSON Schema
+
+```json
 {
-  "sessionId": "web_session_1234567890",
-  "messages": [{ "role": "user", "content": "用户输入" }],
-  "system": "你是助手，可以调用工具",
-  "useTools": true
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["sessionId", "messages", "useTools"],
+  "properties": {
+    "sessionId": {
+      "type": "string"
+    },
+    "messages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["role", "content"],
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": ["user", "assistant"]
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "useTools": {
+      "type": "boolean"
+    }
+  }
 }
 ```
 
-## 响应格式 (SSE Stream)
+### TypeScript
 
-后端返回 `Content-Type: text/event-stream`，每个事件以 `data:` 开头，使用换行分隔。
+```ts
+type ChatStreamMessage = {
+  role: "user" | "assistant"
+  content: string
+}
 
-### 事件类型
-
-| 事件类型 | 说明 | 字段 |
-|---------|------|------|
-| `start` | 会话开始 | - |
-| `reasoning-start` | 推理开始 | - |
-| `reasoning-delta` | 推理内容增量 | `text`: 推理文本 |
-| `reasoning-end` | 推理结束 | - |
-| `tool-input-start` | 工具调用开始 | `toolName`: 工具名称 |
-| `tool-input-delta` | 工具输入增量 | `delta`: 输入内容 |
-| `tool-input-end` | 工具输入结束 | - |
-| `tool-result` | 工具执行结果 | `output`: 结果内容 |
-| `text-delta` | 回复文本增量 | `text`: 回复文本 |
-| `finish` | 会话结束 | `finishReason`: 结束原因 |
-
-### 示例响应
-
-```
-data: {"type":"start"}
-
-data: {"type":"reasoning-start"}
-
-data: {"type":"reasoning-delta","text":"用户想要执行数据清洗任务，"}
-
-data: {"type":"reasoning-delta","text":"我需要调用Python脚本来完成。"}
-
-data: {"type":"reasoning-end"}
-
-data: {"type":"tool-input-start","toolName":"python_data_clean"}
-
-data: {"type":"tool-input-delta","delta":"{\n  \"input\": \"清洗昨日销售数据\"\n}"}
-
-data: {"type":"tool-input-end"}
-
-data: {"type":"tool-result","output":"成功清洗 1234 条数据"}
-
-data: {"type":"text-delta","text":"已完成数据清洗任务，"}data: {"type":"text-delta","text":"共处理 1234 条记录。"}
-
-data: {"type":"finish","finishReason":"stop"}
+type ChatStreamRequest = {
+  sessionId: string
+  messages: ChatStreamMessage[]
+  useTools: boolean
+}
 ```
 
-## 前端解析逻辑
+---
 
-```typescript
-const handleSendChat = async () => {
-  const response = await fetch('/api/web/chat/stream', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-API-Key': '<API_KEY>',
-    },
-    body: JSON.stringify({
-      sessionId: 'web_session_' + Date.now(),
-      messages: [{ role: 'user', content: userMessage }],
-      system: '你是助手，可以调用工具',
-      useTools: true,
-    }),
-  });
+## Response Transport
 
-  const reader = response.body?.getReader();
-  const decoder = new TextDecoder();
-  let buffer = '';
+- 协议：`text/event-stream`
+- 帧格式：每行以 `data:` 开头
+- 一次 HTTP 请求内，可能出现多轮 `start -> finish`
+- 前端不能在第一次 `finish` 就结束
+- 只有 `type = "finish"` 且 `finishReason = "stop"` 才算本次请求真正完成
+- `[DONE]` 是流结束标记，不等价于业务完成
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    
-    buffer += decoder.decode(value);
-    const lines = buffer.split('\n');
-    buffer = lines.pop() || '';
+---
 
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || !trimmedLine.startsWith('data:')) continue;
+## Event Schema
 
-      const jsonStr = trimmedLine.slice(5).trim();
-      if (!jsonStr) continue;
+### 核心事件集合
 
-      const parsed = JSON.parse(jsonStr);
-      const eventType = parsed.type;
-
-      switch (eventType) {
-        case 'start':
-          // 初始化状态
-          break;
-        case 'reasoning-start':
-          setThinkingContent('💭 推理中...');
-          setIsThinking(true);
-          break;
-        case 'reasoning-delta':
-          setThinkingContent('💭 ' + parsed.text);
-          break;
-        case 'reasoning-end':
-          setThinkingContent('🔧 处理中...');
-          break;
-        case 'tool-input-start':
-          setThinkingContent(`📝 调用工具: ${parsed.toolName}`);
-          break;
-        case 'tool-input-delta':
-          setThinkingContent(prev => prev + parsed.delta);
-          break;
-        case 'tool-result':
-          setThinkingContent(`✅ ${parsed.toolName} 返回: ${parsed.output}`);
-          break;
-        case 'text-delta':
-          setIsThinking(false);
-          // 更新消息内容
-          break;
-        case 'finish':
-          setThinkingContent('');
-          setIsThinking(false);
-          break;
-      }
-    }
-  }
-};
+```ts
+type ChatStreamEvent =
+  | { type: "start" }
+  | { type: "start-step"; request: { body: Record<string, unknown>; warnings?: unknown[] } }
+  | { type: "reasoning-start"; id: string }
+  | { type: "reasoning-delta"; id: string; text: string; providerMetadata?: Record<string, unknown> }
+  | { type: "reasoning-end"; id: string }
+  | { type: "text-start"; id: string }
+  | { type: "text-delta"; id: string; text: string }
+  | { type: "text-end"; id: string }
+  | { type: "tool-input-start"; id: string; toolName: string; dynamic?: boolean }
+  | { type: "tool-input-delta"; id: string; delta: string }
+  | { type: "tool-input-end"; id: string }
+  | { type: "tool-call"; toolCallId: string; toolName: string; input: Record<string, unknown> }
+  | { type: "tool-result"; toolCallId: string; toolName: string; input: Record<string, unknown>; output: unknown; dynamic?: boolean }
+  | { type: "finish-step"; finishReason: "tool-calls" | "stop" | string; rawFinishReason?: string }
+  | { type: "finish"; finishReason: "tool-calls" | "stop" | string; rawFinishReason?: string }
 ```
 
-## 状态管理
+### 实际已观测到的事件类型
 
-| 状态 | 说明 |
-|-----|------|
-| `chatMessages` | 聊天消息列表 |
-| `thinkingContent` | 当前思考/处理中的内容 |
-| `isThinking` | 是否正在处理中 |
+- `start`
+- `start-step`
+- `reasoning-start`
+- `reasoning-delta`
+- `reasoning-end`
+- `text-start`
+- `text-delta`
+- `text-end`
+- `tool-input-start`
+- `tool-input-delta`
+- `tool-input-end`
+- `tool-call`
+- `tool-result`
+- `finish-step`
+- `finish`
 
-## 消息类型样式
+---
 
-| 角色 | 样式 |
-|-----|------|
-| `user` | 蓝色气泡，右对齐 |
-| `assistant` | 绿色头像，左对齐 |
-| `thinking` | 黄色气泡，显示思考过程 |
-| `tool-call` | 紫色气泡，显示工具调用 |
-| `tool-input` | 浅蓝气泡，显示工具输入 |
-| `text-preview` | 虚线边框，预览状态 |
+## Event Semantics
+
+### `start`
+
+- 一轮处理开始
+- 可视为当前 step 的初始化
+
+### `start-step`
+
+- 返回本轮 step 的请求上下文
+- 常包含模型、消息、tools 和 stream 配置
+
+### `reasoning-*`
+
+- 表示模型推理过程
+- 前端应作为阶段气泡展示
+- 不应累积到最终 Markdown 回复里
+
+### `text-*`
+
+- 只有 `text-delta` 需要累积
+- 最终 assistant 内容应由 `text-delta` 拼接而成
+- 拼接结果按 Markdown 渲染
+
+### `tool-*`
+
+- 表示工具参数生成、工具调用、工具结果返回
+- 前端应作为阶段气泡展示
+- 不应直接并入最终 Markdown 正文
+
+### `finish-step`
+
+- 表示当前 step 结束
+- 若 `finishReason = "tool-calls"`，说明本次请求还会继续进入下一轮
+
+### `finish`
+
+- `finishReason = "tool-calls"`：未完成，继续等待
+- `finishReason = "stop"`：本次请求完成
+
+---
+
+## Frontend Rules
+
+当前前端解析应满足：
+
+1. 一次 SSE 请求只维护一个 assistant 气泡
+2. `text` 类型才渲染 Markdown
+3. `reasoning / tool / status` 只展示单行阶段内容
+4. 非最终阶段内容只作为临时展示，不堆积
+5. 最终停留在 `text-delta` 累积结果
+6. 只有 `finishReason === "stop"` 才结束本次请求
+
+---
+
+## 代码落点
+
+- TypeScript 类型：`src/services/types.ts`
+- Schema 常量：`src/services/chatStreamSchema.ts`
+- 协议说明：`docs/CHAT_STREAM_PROTOCOL.md`

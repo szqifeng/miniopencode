@@ -1,841 +1,261 @@
-import type { Tool, Task, ChatMessage, ChatSettings, KnowledgeItem } from '../services/types';
+import type { Tool, Task, Run, Report, ChatMessage, ChatSettings, KnowledgeItem } from '../services/types';
 
 const mockTools: Tool[] = [
-  {
-    id: '1',
-    name: 'Python 数据清洗脚本',
-    type: 'script',
-    description: '用于清洗业务数据的 Python 脚本',
-    status: 'active',
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-10T00:00:00Z',
-  },
-  {
-    id: '2',
-    name: '用户同步 API',
-    type: 'api',
-    description: '从第三方系统同步用户数据',
-    status: 'active',
-    createdAt: '2024-01-02T00:00:00Z',
-    updatedAt: '2024-01-12T00:00:00Z',
-  },
-  {
-    id: '3',
-    name: '日志备份脚本',
-    type: 'shell',
-    description: '定期备份系统日志到存储',
-    status: 'inactive',
-    createdAt: '2024-01-03T00:00:00Z',
-    updatedAt: '2024-01-15T00:00:00Z',
-  },
-  {
-    id: '4',
-    name: 'MySQL 备份脚本',
-    type: 'shell',
-    description: '定期备份 MySQL 数据库到远程存储',
-    status: 'active',
-    createdAt: '2024-01-04T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '5',
-    name: 'Excel 报表生成器',
-    type: 'script',
-    description: '自动生成销售报表并发送邮件',
-    status: 'active',
-    createdAt: '2024-01-05T00:00:00Z',
-    updatedAt: '2024-01-12T00:00:00Z',
-  },
-  {
-    id: '6',
-    name: 'Redis 缓存清理',
-    type: 'shell',
-    description: '清理过期缓存释放内存空间',
-    status: 'active',
-    createdAt: '2024-01-06T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '7',
-    name: '日志分析脚本',
-    type: 'script',
-    description: '分析 NGINX 日志生成访问统计',
-    status: 'inactive',
-    createdAt: '2024-01-07T00:00:00Z',
-    updatedAt: '2024-01-13T00:00:00Z',
-  },
-  {
-    id: '8',
-    name: '批量邮件发送',
-    type: 'api',
-    description: '通过 SMTP 批量发送营销邮件',
-    status: 'active',
-    createdAt: '2024-01-08T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '9',
-    name: '图片批量压缩',
-    type: 'script',
-    description: '压缩产品图片减小存储空间',
-    status: 'active',
-    createdAt: '2024-01-09T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '10',
-    name: '系统健康检查',
-    type: 'api',
-    description: '检查服务器 CPU、内存、磁盘状态',
-    status: 'active',
-    createdAt: '2024-01-10T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
+  { id: '1', name: '表格质量检查器', type: 'script', description: '扫描 CSV / XLSX 的空值、重复值与异常列。', status: 'active', createdAt: '2026-03-10T01:00:00Z', updatedAt: '2026-03-18T01:00:00Z' },
+  { id: '2', name: '销售归因摘要器', type: 'script', description: '按区域与渠道汇总销售波动并输出摘要。', status: 'active', createdAt: '2026-03-11T01:00:00Z', updatedAt: '2026-03-20T01:00:00Z' },
+  { id: '3', name: '库存波动比对器', type: 'script', description: '比对昨日与今日库存快照，生成差异报告。', status: 'active', createdAt: '2026-03-12T01:00:00Z', updatedAt: '2026-03-21T01:00:00Z' },
+  { id: '4', name: '财务异常标注器', type: 'script', description: '定位金额波动与重复支出记录。', status: 'active', createdAt: '2026-03-13T01:00:00Z', updatedAt: '2026-03-24T01:00:00Z' },
 ];
 
 const mockTasks: Task[] = [
   {
     id: '1',
-    name: '每日数据清洗',
-    toolId: '1',
-    toolName: 'Python 数据清洗脚本',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '02:00',
-    },
-    lastRunTime: '2024-01-14T02:00:00Z',
-    nextRunTime: '2024-01-15T02:00:00Z',
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-10T00:00:00Z',
+    name: '销售周报摘要',
+    inputFilePath: '/workspace/reports/sales-weekly.xlsx',
+    schedule: 'weekly',
+    scheduleTime: '周一 09:00',
+    status: 'active',
+    analysisGoal: '输出销售摘要、区域波动和重点异常门店。',
+    outputFormat: 'markdown',
+    lastRunAt: '2026-04-07T01:00:00Z',
+    nextRunAt: '2026-04-14T01:00:00Z',
+    createdAt: '2026-03-20T08:00:00Z',
+    updatedAt: '2026-04-07T01:12:00Z',
   },
   {
     id: '2',
-    name: '用户数据同步',
-    toolId: '2',
-    toolName: '用户同步 API',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '14:00',
-      weekday: 1,
-    },
-    lastRunTime: '2024-01-14T12:00:00Z',
-    nextRunTime: '2024-01-14T18:00:00Z',
-    createdAt: '2024-01-02T00:00:00Z',
-    updatedAt: '2024-01-12T00:00:00Z',
+    name: '库存日报巡检',
+    inputFilePath: '/workspace/reports/inventory-daily.csv',
+    schedule: 'daily',
+    scheduleTime: '18:00',
+    status: 'active',
+    analysisGoal: '输出缺货风险、积压 SKU 和仓库异常波动。',
+    outputFormat: 'markdown',
+    lastRunAt: '2026-04-07T10:00:00Z',
+    nextRunAt: '2026-04-08T10:00:00Z',
+    createdAt: '2026-03-21T08:00:00Z',
+    updatedAt: '2026-04-07T10:05:00Z',
   },
   {
     id: '3',
-    name: '日志备份',
-    toolId: '3',
-    toolName: '日志备份脚本',
-    status: 'disabled',
-    schedule: {
-      enabled: false,
-      type: 'daily',
-      time: '00:00',
-    },
-    lastRunTime: '2024-01-13T00:00:00Z',
-    nextRunTime: '-',
-    createdAt: '2024-01-03T00:00:00Z',
-    updatedAt: '2024-01-15T00:00:00Z',
+    name: '财务快照复核',
+    inputFilePath: '/workspace/reports/finance-snapshot.xlsx',
+    schedule: 'once',
+    scheduleTime: '立即执行',
+    status: 'paused',
+    analysisGoal: '输出费用异常、重复付款和大额偏差说明。',
+    outputFormat: 'markdown',
+    lastRunAt: '2026-04-05T03:30:00Z',
+    createdAt: '2026-03-24T08:00:00Z',
+    updatedAt: '2026-04-05T03:50:00Z',
   },
   {
     id: '4',
-    name: '数据库备份',
-    toolId: '4',
-    toolName: 'MySQL 备份脚本',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '03:00',
-    },
-    lastRunTime: '2024-01-14T03:00:00Z',
-    nextRunTime: '2024-01-15T03:00:00Z',
-    createdAt: '2024-01-04T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
+    name: '客诉归因追踪',
+    inputFilePath: '/workspace/reports/complaints.csv',
+    schedule: 'weekly',
+    scheduleTime: '周三 14:00',
+    status: 'error',
+    analysisGoal: '归纳投诉主题、重复问题和需要人工复盘的案例。',
+    outputFormat: 'markdown',
+    lastRunAt: '2026-04-06T06:00:00Z',
+    nextRunAt: '2026-04-13T06:00:00Z',
+    createdAt: '2026-03-26T08:00:00Z',
+    updatedAt: '2026-04-06T06:20:00Z',
+  },
+];
+
+const mockRuns: Run[] = [
+  { id: 'run-101', taskId: '1', status: 'success', reportId: 'report-101', startedAt: '2026-04-07T01:00:00Z', finishedAt: '2026-04-07T01:03:00Z' },
+  { id: 'run-102', taskId: '1', status: 'success', reportId: 'report-102', startedAt: '2026-03-31T01:00:00Z', finishedAt: '2026-03-31T01:04:00Z' },
+  { id: 'run-201', taskId: '2', status: 'success', reportId: 'report-201', startedAt: '2026-04-07T10:00:00Z', finishedAt: '2026-04-07T10:02:00Z' },
+  { id: 'run-202', taskId: '2', status: 'failed', startedAt: '2026-04-06T10:00:00Z', finishedAt: '2026-04-06T10:01:20Z', errorMessage: '发现库存表缺少 `warehouse_id` 列。' },
+  { id: 'run-301', taskId: '3', status: 'success', reportId: 'report-301', startedAt: '2026-04-05T03:30:00Z', finishedAt: '2026-04-05T03:37:00Z' },
+  { id: 'run-401', taskId: '4', status: 'failed', startedAt: '2026-04-06T06:00:00Z', finishedAt: '2026-04-06T06:02:30Z', errorMessage: '原始文件编码异常，未能解析投诉内容列。' },
+];
+
+const mockReports: Report[] = [
+  {
+    id: 'report-101',
+    taskId: '1',
+    runId: 'run-101',
+    contentMarkdown: '## 本周销售结论\n\n- 华东区销售额环比上涨 **12.4%**。\n- 3 家门店连续两周低于目标值，建议优先复盘促销节奏。\n- 渠道投放中，短视频渠道转化最好，但退货率也偏高。\n\n### 建议动作\n\n1. 复盘华南区退货率异常门店。\n2. 对低于目标值门店追加线下活动检查。\n3. 检查短视频活动的 SKU 组合是否过度促销。',
+    createdAt: '2026-04-07T01:03:00Z',
   },
   {
-    id: '5',
-    name: '报表生成',
-    toolId: '5',
-    toolName: 'Excel 报表生成器',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '09:00',
-      weekday: 5,
-    },
-    lastRunTime: '2024-01-12T09:00:00Z',
-    nextRunTime: '2024-01-19T09:00:00Z',
-    createdAt: '2024-01-05T00:00:00Z',
-    updatedAt: '2024-01-12T00:00:00Z',
+    id: 'report-102',
+    taskId: '1',
+    runId: 'run-102',
+    contentMarkdown: '## 上周销售结论\n\n- 区域销售基本稳定，北区客单价小幅回升。\n- 两个渠道的投放成本上涨，但未带来对应转化增量。\n- 建议下周重点观察新客转化链路。',
+    createdAt: '2026-03-31T01:04:00Z',
   },
   {
-    id: '6',
-    name: '缓存清理',
-    toolId: '6',
-    toolName: 'Redis 缓存清理',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '04:30',
-    },
-    lastRunTime: '2024-01-14T04:30:00Z',
-    nextRunTime: '2024-01-15T04:30:00Z',
-    createdAt: '2024-01-06T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
+    id: 'report-201',
+    taskId: '2',
+    runId: 'run-201',
+    contentMarkdown: '## 库存日报\n\n- 今日新增缺货风险 SKU **18 个**。\n- 华北 2 号仓出现异常积压，主要集中在家清品类。\n- 运输延迟订单较昨日下降 **9%**。\n\n### 需要关注\n\n- SKU `HD-2031` 连续 3 天低于安全库存。\n- 建议同步采购侧确认补货节奏。',
+    createdAt: '2026-04-07T10:02:00Z',
   },
   {
-    id: '7',
-    name: '日志分析',
-    toolId: '7',
-    toolName: '日志分析脚本',
-    status: 'disabled',
-    schedule: {
-      enabled: false,
-      type: 'daily',
-      time: '06:00',
-    },
-    lastRunTime: '2024-01-10T06:00:00Z',
-    nextRunTime: '-',
-    createdAt: '2024-01-07T00:00:00Z',
-    updatedAt: '2024-01-13T00:00:00Z',
-  },
-  {
-    id: '8',
-    name: '邮件发送',
-    toolId: '8',
-    toolName: '批量邮件发送',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '10:00',
-      weekday: 0,
-    },
-    lastRunTime: '2024-01-14T10:00:00Z',
-    nextRunTime: '2024-01-21T10:00:00Z',
-    createdAt: '2024-01-08T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '9',
-    name: '图片压缩',
-    toolId: '9',
-    toolName: '图片批量压缩',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '01:00',
-    },
-    lastRunTime: '2024-01-14T01:00:00Z',
-    nextRunTime: '2024-01-15T01:00:00Z',
-    createdAt: '2024-01-09T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '10',
-    name: '监控系统检查',
-    toolId: '10',
-    toolName: '系统健康检查',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '08:00',
-      weekday: 3,
-    },
-    lastRunTime: '2024-01-10T08:00:00Z',
-    nextRunTime: '2024-01-17T08:00:00Z',
-    createdAt: '2024-01-10T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '11',
-    name: '订单数据同步',
-    toolId: '2',
-    toolName: '用户同步 API',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '23:00',
-    },
-    lastRunTime: '2024-01-14T23:00:00Z',
-    nextRunTime: '2024-01-15T23:00:00Z',
-    createdAt: '2024-01-11T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '12',
-    name: '库存预警检查',
-    toolId: '5',
-    toolName: 'Excel 报表生成器',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '07:00',
-    },
-    lastRunTime: '2024-01-14T07:00:00Z',
-    nextRunTime: '2024-01-15T07:00:00Z',
-    createdAt: '2024-01-12T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '13',
-    name: '数据导出任务',
-    toolId: '1',
-    toolName: 'Python 数据清洗脚本',
-    status: 'disabled',
-    schedule: {
-      enabled: false,
-      type: 'weekly',
-      time: '18:00',
-      weekday: 6,
-    },
-    lastRunTime: '2024-01-13T18:00:00Z',
-    nextRunTime: '-',
-    createdAt: '2024-01-13T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '14',
-    name: '会话清理',
-    toolId: '6',
-    toolName: 'Redis 缓存清理',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '05:00',
-    },
-    lastRunTime: '2024-01-14T05:00:00Z',
-    nextRunTime: '2024-01-15T05:00:00Z',
-    createdAt: '2024-01-14T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '15',
-    name: 'CDN 缓存刷新',
-    toolId: '9',
-    toolName: '图片批量压缩',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '02:00',
-      weekday: 1,
-    },
-    lastRunTime: '2024-01-08T02:00:00Z',
-    nextRunTime: '2024-01-15T02:00:00Z',
-    createdAt: '2024-01-15T00:00:00Z',
-    updatedAt: '2024-01-15T00:00:00Z',
-  },
-  {
-    id: '16',
-    name: '搜索索引重建',
-    toolId: '1',
-    toolName: 'Python 数据清洗脚本',
-    status: 'disabled',
-    schedule: {
-      enabled: false,
-      type: 'weekly',
-      time: '03:00',
-      weekday: 0,
-    },
-    lastRunTime: '2024-01-07T03:00:00Z',
-    nextRunTime: '-',
-    createdAt: '2024-01-16T00:00:00Z',
-    updatedAt: '2024-01-16T00:00:00Z',
-  },
-  {
-    id: '17',
-    name: '异常数据标记',
-    toolId: '5',
-    toolName: 'Excel 报表生成器',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '08:30',
-    },
-    lastRunTime: '2024-01-14T08:30:00Z',
-    nextRunTime: '2024-01-15T08:30:00Z',
-    createdAt: '2024-01-17T00:00:00Z',
-    updatedAt: '2024-01-17T00:00:00Z',
-  },
-  {
-    id: '18',
-    name: '支付对账',
-    toolId: '2',
-    toolName: '用户同步 API',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '09:30',
-    },
-    lastRunTime: '2024-01-14T09:30:00Z',
-    nextRunTime: '2024-01-15T09:30:00Z',
-    createdAt: '2024-01-18T00:00:00Z',
-    updatedAt: '2024-01-18T00:00:00Z',
-  },
-  {
-    id: '19',
-    name: '用户行为分析',
-    toolId: '7',
-    toolName: '日志分析脚本',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '06:30',
-    },
-    lastRunTime: '2024-01-14T06:30:00Z',
-    nextRunTime: '2024-01-15T06:30:00Z',
-    createdAt: '2024-01-19T00:00:00Z',
-    updatedAt: '2024-01-19T00:00:00Z',
-  },
-  {
-    id: '20',
-    name: '证书过期检查',
-    toolId: '10',
-    toolName: '系统健康检查',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '10:30',
-      weekday: 4,
-    },
-    lastRunTime: '2024-01-11T10:30:00Z',
-    nextRunTime: '2024-01-18T10:30:00Z',
-    createdAt: '2024-01-20T00:00:00Z',
-    updatedAt: '2024-01-20T00:00:00Z',
-  },
-  {
-    id: '21',
-    name: '短信发送统计',
-    toolId: '8',
-    toolName: '批量邮件发送',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '11:00',
-    },
-    lastRunTime: '2024-01-14T11:00:00Z',
-    nextRunTime: '2024-01-15T11:00:00Z',
-    createdAt: '2024-01-21T00:00:00Z',
-    updatedAt: '2024-01-21T00:00:00Z',
-  },
-  {
-    id: '22',
-    name: '文件清理任务',
-    toolId: '3',
-    toolName: '日志备份脚本',
-    status: 'disabled',
-    schedule: {
-      enabled: false,
-      type: 'weekly',
-      time: '04:00',
-      weekday: 2,
-    },
-    lastRunTime: '2024-01-09T04:00:00Z',
-    nextRunTime: '-',
-    createdAt: '2024-01-22T00:00:00Z',
-    updatedAt: '2024-01-22T00:00:00Z',
-  },
-  {
-    id: '23',
-    name: '数据库连接检查',
-    toolId: '10',
-    toolName: '系统健康检查',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '00:30',
-    },
-    lastRunTime: '2024-01-14T00:30:00Z',
-    nextRunTime: '2024-01-15T00:30:00Z',
-    createdAt: '2024-01-23T00:00:00Z',
-    updatedAt: '2024-01-23T00:00:00Z',
-  },
-  {
-    id: '24',
-    name: '报表数据汇总',
-    toolId: '5',
-    toolName: 'Excel 报表生成器',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'weekly',
-      time: '17:00',
-      weekday: 5,
-    },
-    lastRunTime: '2024-01-12T17:00:00Z',
-    nextRunTime: '2024-01-19T17:00:00Z',
-    createdAt: '2024-01-24T00:00:00Z',
-    updatedAt: '2024-01-24T00:00:00Z',
-  },
-  {
-    id: '25',
-    name: '文件上传备份',
-    toolId: '4',
-    toolName: 'MySQL 备份脚本',
-    status: 'enabled',
-    schedule: {
-      enabled: true,
-      type: 'daily',
-      time: '03:30',
-    },
-    lastRunTime: '2024-01-14T03:30:00Z',
-    nextRunTime: '2024-01-15T03:30:00Z',
-    createdAt: '2024-01-25T00:00:00Z',
-    updatedAt: '2024-01-25T00:00:00Z',
+    id: 'report-301',
+    taskId: '3',
+    runId: 'run-301',
+    contentMarkdown: '## 财务复核摘要\n\n- 识别到 4 笔可能重复付款。\n- 2 条费用记录与预算差异超过 **20%**。\n- 未发现新的大额异常支出。',
+    createdAt: '2026-04-05T03:37:00Z',
   },
 ];
 
 const mockKnowledge: KnowledgeItem[] = [
-  {
-    id: '1',
-    title: 'Python 脚本规范',
-    content: '数据清洗脚本需要遵循以下规范：\n1. 输入文件格式为 CSV\n2. 输出文件格式为 JSON\n3. 错误处理需要记录日志',
-    category: '开发规范',
-    tags: ['Python', '规范'],
-    createdAt: '2024-01-01T00:00:00Z',
-    updatedAt: '2024-01-10T00:00:00Z',
-  },
-  {
-    id: '2',
-    title: 'API 接口文档',
-    content: '用户同步 API 接口说明：\n- 基础 URL: /api/users\n- 认证方式: Bearer Token',
-    category: '开发规范',
-    tags: ['API', '文档'],
-    createdAt: '2024-01-02T00:00:00Z',
-    updatedAt: '2024-01-12T00:00:00Z',
-  },
-  {
-    id: '3',
-    title: 'MySQL 备份策略',
-    content: '数据库备份规范：\n1. 每日凌晨 3:00 全量备份\n2. 每小时增量备份\n3. 备份保留 30 天\n4. 备份文件加密存储',
-    category: '运维规范',
-    tags: ['MySQL', '备份'],
-    createdAt: '2024-01-03T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '4',
-    title: 'Redis 使用最佳实践',
-    content: 'Redis 缓存使用规范：\n1. key 命名规范：模块:实体:ID\n2. 设置合理的过期时间\n3. 避免存储过大的数据\n4. 定期清理无用缓存',
-    category: '开发规范',
-    tags: ['Redis', '缓存'],
-    createdAt: '2024-01-04T00:00:00Z',
-    updatedAt: '2024-01-10T00:00:00Z',
-  },
-  {
-    id: '5',
-    title: '邮件发送频率限制',
-    content: '邮件发送规范：\n1. 每批次最多发送 100 封\n2. 间隔 2 秒避免被拦截\n3. 每日总发送量不超过 5000 封\n4. 添加退订链接',
-    category: '运营规范',
-    tags: ['邮件', '营销'],
-    createdAt: '2024-01-05T00:00:00Z',
-    updatedAt: '2024-01-12T00:00:00Z',
-  },
-  {
-    id: '6',
-    title: '图片压缩标准',
-    content: '产品图片压缩规范：\n1. 最大分辨率 1920x1080\n2. 质量压缩至 80%\n3. 格式转换为 WebP\n4. 单文件不超过 500KB',
-    category: '运维规范',
-    tags: ['图片', '优化'],
-    createdAt: '2024-01-06T00:00:00Z',
-    updatedAt: '2024-01-13T00:00:00Z',
-  },
-  {
-    id: '7',
-    title: '系统监控指标',
-    content: '服务器监控标准：\n1. CPU 使用率 > 80% 告警\n2. 内存使用率 > 85% 告警\n3. 磁盘使用率 > 90% 告警\n4. 服务响应时间 > 3s 告警',
-    category: '运维规范',
-    tags: ['监控', '告警'],
-    createdAt: '2024-01-07T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
-  {
-    id: '8',
-    title: '日志分析配置',
-    content: 'NGINX 日志分析规范：\n1. 日志格式：JSON\n2. 分析维度：PV、UV、来源、状态码\n3. 慢查询定义：响应时间 > 1s\n4. 报表生成时间：每日 6:00',
-    category: '运维规范',
-    tags: ['日志', '分析'],
-    createdAt: '2024-01-08T00:00:00Z',
-    updatedAt: '2024-01-14T00:00:00Z',
-  },
+  { id: '1', title: '表格任务约束', content: '桌面 Agent 首版仅支持 CSV / XLSX 输入，并统一输出 Markdown 报告。', category: '产品约束', tags: ['Task First', 'Markdown'], createdAt: '2026-03-20T00:00:00Z', updatedAt: '2026-04-01T00:00:00Z' },
+  { id: '2', title: '报告规范', content: '报告需包含结论、异常、建议动作三部分，避免输出冗长流水账。', category: '报告规范', tags: ['报告', '规范'], createdAt: '2026-03-22T00:00:00Z', updatedAt: '2026-04-01T00:00:00Z' },
 ];
 
 const mockMessages: ChatMessage[] = [
-  {
-    id: '1',
-    role: 'assistant',
-    content: '你好！我是 AI 助手，可以帮助你管理任务和工具。有什么我可以帮你的吗？',
-    timestamp: '2024-01-14T10:00:00Z',
-  },
+  { id: '1', role: 'assistant', content: '我是任务编辑助手，只帮助你创建和修改表格分析任务。', timestamp: '2026-04-07T10:00:00Z' },
 ];
 
-let chatSettings: ChatSettings = {
-  model: 'gpt-3.5-turbo',
-  temperature: 0.7,
-  maxTokens: 1000,
-};
-
-const toolMap: Record<string, string> = {
-  '1': 'Python 数据清洗脚本',
-  '2': '用户同步 API',
-  '3': '日志备份脚本',
-  '4': 'MySQL 备份脚本',
-  '5': 'Excel 报表生成器',
-  '6': 'Redis 缓存清理',
-  '7': '日志分析脚本',
-  '8': '批量邮件发送',
-  '9': '图片批量压缩',
-  '10': '系统健康检查',
-  '11': '订单同步',
-  '12': '库存检查',
-  '13': '数据导出',
-  '14': '会话清理',
-  '15': 'CDN刷新',
-};
+let chatSettings: ChatSettings = { model: 'gpt-4.1-mini', temperature: 0.2, maxTokens: 1200 };
 
 const aiReplies = [
-  '已为您查询，当前系统有 3 个任务正在运行。',
-  '好的，我已经了解了你的需求。',
-  '任务执行成功，上次运行时间已更新。',
-  '根据当前设置，你的任务将在每天凌晨2点执行。',
-  '工具列表已刷新，目前共有 3 个可用工具。',
+  '我已经把你的描述整理成结构化任务草稿了。',
+  '收到，我会继续围绕任务配置更新预览。',
+  '可以，当前聊天只会服务于任务创建和编辑。',
 ];
 
+function addDuration(base: Date, minutes: number) {
+  return new Date(base.getTime() + minutes * 60 * 1000).toISOString();
+}
+
+function getNextRunAt(task: Task, from = new Date()) {
+  if (task.schedule === 'once') {
+    return undefined;
+  }
+
+  const next = new Date(from);
+  if (task.schedule === 'daily') {
+    next.setUTCDate(next.getUTCDate() + 1);
+  }
+  if (task.schedule === 'weekly') {
+    next.setUTCDate(next.getUTCDate() + 7);
+  }
+
+  return next.toISOString();
+}
+
+function buildReportMarkdown(task: Task, runAt: Date) {
+  return `## ${task.name}\n\n- 输入文件：\`${task.inputFilePath}\`\n- 任务目标：${task.analysisGoal || '生成结构化分析摘要'}\n- 输出格式：Markdown\n- 执行时间：${runAt.toISOString()}\n\n### 结论\n\n1. 本次任务已按配置完成扫描。\n2. 重点异常已被归纳为结构化摘要。\n3. 建议结合原始表格继续复核高风险记录。`;
+}
+
 export const mockHandlers = {
-  'GET /api/tools': () => ({
-    success: true,
-    data: mockTools,
-    total: mockTools.length,
-  }),
+  'GET /api/tools': () => ({ success: true, data: mockTools, total: mockTools.length }),
+  'GET /api/tools/:id': (params: { id: string }) => ({ success: true, data: mockTools.find(t => t.id === params.id) }),
+  'POST /api/tools': (body: Partial<Tool>) => { const t: Tool = { id: String(mockTools.length + 1), name: body.name || '', type: body.type || 'script', description: body.description || '', status: body.status || 'active', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; mockTools.push(t); return { success: true, data: t }; },
+  'PUT /api/tools/:id': (params: { id: string }, body: Partial<Tool>) => { const idx = mockTools.findIndex(t => t.id === params.id); if (idx !== -1) { mockTools[idx] = { ...mockTools[idx], ...body, updatedAt: new Date().toISOString() }; return { success: true, data: mockTools[idx] }; } return { success: false, errorMessage: '工具不存在' }; },
+  'DELETE /api/tools/:id': (params: { id: string }) => { const idx = mockTools.findIndex(t => t.id === params.id); if (idx !== -1) { mockTools.splice(idx, 1); return { success: true }; } return { success: false, errorMessage: '工具不存在' }; },
 
-  'GET /api/tools/:id': (params: { id: string }) => {
-    const tool = mockTools.find((t) => t.id === params.id);
-    return tool
-      ? { success: true, data: tool }
-      : { success: false, errorMessage: '工具不存在' };
-  },
-
-  'POST /api/tools': (body: Partial<Tool>) => {
-    const newTool: Tool = {
-      id: String(mockTools.length + 1),
-      name: body.name || '',
-      type: body.type || 'script',
-      description: body.description || '',
-      status: body.status || 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    mockTools.push(newTool);
-    return { success: true, data: newTool };
-  },
-
-  'PUT /api/tools/:id': (params: { id: string }, body: Partial<Tool>) => {
-    const index = mockTools.findIndex((t) => t.id === params.id);
-    if (index !== -1) {
-      mockTools[index] = { ...mockTools[index], ...body, updatedAt: new Date().toISOString() };
-      return { success: true, data: mockTools[index] };
-    }
-    return { success: false, errorMessage: '工具不存在' };
-  },
-
-  'DELETE /api/tools/:id': (params: { id: string }) => {
-    const index = mockTools.findIndex((t) => t.id === params.id);
-    if (index !== -1) {
-      mockTools.splice(index, 1);
-      return { success: true };
-    }
-    return { success: false, errorMessage: '工具不存在' };
-  },
-
-  'GET /api/tasks': () => ({
-    success: true,
-    data: mockTasks,
-    total: mockTasks.length,
-  }),
-
-  'GET /api/tasks/:id': (params: { id: string }) => {
-    const task = mockTasks.find((t) => t.id === params.id);
-    return task
-      ? { success: true, data: task }
-      : { success: false, errorMessage: '任务不存在' };
-  },
-
+  'GET /api/tasks': () => ({ success: true, data: mockTasks, total: mockTasks.length }),
+  'GET /api/tasks/:id': (params: { id: string }) => { const t = mockTasks.find(t => t.id === params.id); return t ? { success: true, data: t } : { success: false, errorMessage: '任务不存在' }; },
   'POST /api/tasks': (body: Partial<Task>) => {
-    const { toolId } = body;
-    const newTask: Task = {
+    const now = new Date().toISOString();
+    const t: Task = {
       id: String(mockTasks.length + 1),
-      toolName: toolMap[toolId || ''] || '未知工具',
-      lastRunTime: '-',
-      nextRunTime: '-',
-      status: 'enabled',
       name: body.name || '',
-      toolId: toolId || '',
-      schedule: body.schedule || { enabled: false, type: 'daily', time: '00:00' },
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+      inputFilePath: body.inputFilePath || '',
+      schedule: body.schedule || 'once',
+      scheduleTime: body.scheduleTime || (body.schedule === 'weekly' ? '周一 09:00' : body.schedule === 'daily' ? '09:00' : '立即执行'),
+      status: body.status || 'active',
+      analysisGoal: body.analysisGoal || '生成结构化分析摘要',
+      outputFormat: 'markdown',
+      createdAt: now,
+      updatedAt: now,
     };
-    mockTasks.push(newTask);
-    return { success: true, data: newTask };
+    t.nextRunAt = getNextRunAt(t);
+    mockTasks.unshift(t);
+    return { success: true, data: t };
   },
-
   'PUT /api/tasks/:id': (params: { id: string }, body: Partial<Task>) => {
-    const index = mockTasks.findIndex((t) => t.id === params.id);
-    if (index !== -1) {
-      const { toolId } = body;
-      mockTasks[index] = {
-        ...mockTasks[index],
+    const idx = mockTasks.findIndex(t => t.id === params.id);
+    if (idx !== -1) {
+      mockTasks[idx] = {
+        ...mockTasks[idx],
         ...body,
-        toolName: toolMap[toolId || ''] || mockTasks[index].toolName,
+        outputFormat: 'markdown',
         updatedAt: new Date().toISOString(),
       };
-      return { success: true, data: mockTasks[index] };
+      mockTasks[idx].nextRunAt = getNextRunAt(mockTasks[idx]);
+      return { success: true, data: mockTasks[idx] };
     }
     return { success: false, errorMessage: '任务不存在' };
   },
-
-  'DELETE /api/tasks/:id': (params: { id: string }) => {
-    const index = mockTasks.findIndex((t) => t.id === params.id);
-    if (index !== -1) {
-      mockTasks.splice(index, 1);
-      return { success: true };
-    }
-    return { success: false, errorMessage: '任务不存在' };
-  },
-
+  'DELETE /api/tasks/:id': (params: { id: string }) => { const idx = mockTasks.findIndex(t => t.id === params.id); if (idx !== -1) { mockTasks.splice(idx, 1); return { success: true }; } return { success: false, errorMessage: '任务不存在' }; },
   'POST /api/tasks/:id/run': (params: { id: string }) => {
-    const task = mockTasks.find((t) => t.id === params.id);
-    if (task) {
-      task.lastRunTime = new Date().toISOString();
-      return { success: true, message: '任务已触发执行' };
+    const task = mockTasks.find(t => t.id === params.id);
+    if (!task) {
+      return { success: false, errorMessage: '任务不存在' };
     }
-    return { success: false, errorMessage: '任务不存在' };
-  },
 
-  'POST /api/tasks/:id/enable': (params: { id: string }) => {
-    const task = mockTasks.find((t) => t.id === params.id);
-    if (task) {
-      task.status = 'enabled';
-      task.updatedAt = new Date().toISOString();
-      return { success: true, data: task };
-    }
-    return { success: false, errorMessage: '任务不存在' };
-  },
-
-  'POST /api/tasks/:id/disable': (params: { id: string }) => {
-    const task = mockTasks.find((t) => t.id === params.id);
-    if (task) {
-      task.status = 'disabled';
-      task.updatedAt = new Date().toISOString();
-      return { success: true, data: task };
-    }
-    return { success: false, errorMessage: '任务不存在' };
-  },
-
-  'GET /api/knowledge': () => ({
-    success: true,
-    data: mockKnowledge,
-    total: mockKnowledge.length,
-  }),
-
-  'GET /api/knowledge/:id': (params: { id: string }) => {
-    const item = mockKnowledge.find((k) => k.id === params.id);
-    return item
-      ? { success: true, data: item }
-      : { success: false, errorMessage: '知识不存在' };
-  },
-
-  'POST /api/knowledge': (body: Partial<KnowledgeItem>) => {
-    const newItem: KnowledgeItem = {
-      id: String(mockKnowledge.length + 1),
-      title: body.title || '',
-      content: body.content || '',
-      category: body.category,
-      tags: body.tags || [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
+    const runAt = new Date();
+    const runId = `run-${Date.now()}`;
+    const reportId = `report-${Date.now()}`;
+    const finishedAt = addDuration(runAt, 2);
+    const run: Run = {
+      id: runId,
+      taskId: task.id,
+      status: 'success',
+      reportId,
+      startedAt: runAt.toISOString(),
+      finishedAt,
     };
-    mockKnowledge.push(newItem);
-    return { success: true, data: newItem };
-  },
-
-  'PUT /api/knowledge/:id': (params: { id: string }, body: Partial<KnowledgeItem>) => {
-    const index = mockKnowledge.findIndex((k) => k.id === params.id);
-    if (index !== -1) {
-      mockKnowledge[index] = { ...mockKnowledge[index], ...body, updatedAt: new Date().toISOString() };
-      return { success: true, data: mockKnowledge[index] };
-    }
-    return { success: false, errorMessage: '知识不存在' };
-  },
-
-  'DELETE /api/knowledge/:id': (params: { id: string }) => {
-    const index = mockKnowledge.findIndex((k) => k.id === params.id);
-    if (index !== -1) {
-      mockKnowledge.splice(index, 1);
-      return { success: true };
-    }
-    return { success: false, errorMessage: '知识不存在' };
-  },
-
-  'POST /api/chat': (_body: { message: string }) => {
-    const reply = aiReplies[Math.floor(Math.random() * aiReplies.length)];
-    const newMessage: ChatMessage = {
-      id: String(mockMessages.length + 1),
-      role: 'assistant',
-      content: reply,
-      timestamp: new Date().toISOString(),
+    const report: Report = {
+      id: reportId,
+      taskId: task.id,
+      runId,
+      contentMarkdown: buildReportMarkdown(task, runAt),
+      createdAt: finishedAt,
     };
-    mockMessages.push(newMessage);
-    return { success: true, data: { reply, timestamp: newMessage.timestamp } };
-  },
 
-  'GET /api/chat/history': (params: { limit?: number }) => {
-    const limit = params.limit || 20;
-    return { success: true, data: mockMessages.slice(-limit) };
-  },
+    task.lastRunAt = run.startedAt;
+    task.nextRunAt = getNextRunAt(task, new Date(finishedAt));
+    task.updatedAt = finishedAt;
+    if (task.status === 'error') {
+      task.status = 'active';
+    }
 
+    mockRuns.unshift(run);
+    mockReports.unshift(report);
+    return { success: true, data: run };
+  },
+  'POST /api/tasks/:id/enable': (params: { id: string }) => { const t = mockTasks.find(t => t.id === params.id); if (t) { t.status = 'active'; t.nextRunAt = getNextRunAt(t); t.updatedAt = new Date().toISOString(); return { success: true, data: t }; } return { success: false, errorMessage: '任务不存在' }; },
+  'POST /api/tasks/:id/disable': (params: { id: string }) => { const t = mockTasks.find(t => t.id === params.id); if (t) { t.status = 'paused'; t.updatedAt = new Date().toISOString(); return { success: true, data: t }; } return { success: false, errorMessage: '任务不存在' }; },
+
+  'GET /api/runs': () => ({ success: true, data: mockRuns, total: mockRuns.length }),
+  'GET /api/runs/:id': (params: { id: string }) => { const r = mockRuns.find(r => r.id === params.id); return r ? { success: true, data: r } : { success: false, errorMessage: '运行记录不存在' }; },
+  'GET /api/tasks/:taskId/runs': (params: { taskId: string }) => ({ success: true, data: mockRuns.filter(r => r.taskId === params.taskId) }),
+
+  'GET /api/reports': () => ({ success: true, data: mockReports, total: mockReports.length }),
+  'GET /api/reports/:id': (params: { id: string }) => { const r = mockReports.find(r => r.id === params.id); return r ? { success: true, data: r } : { success: false, errorMessage: '报告不存在' }; },
+  'GET /api/tasks/:taskId/reports': (params: { taskId: string }) => ({ success: true, data: mockReports.filter(r => r.taskId === params.taskId) }),
+
+  'GET /api/knowledge': () => ({ success: true, data: mockKnowledge, total: mockKnowledge.length }),
+  'GET /api/knowledge/:id': (params: { id: string }) => { const k = mockKnowledge.find(k => k.id === params.id); return k ? { success: true, data: k } : { success: false, errorMessage: '知识不存在' }; },
+  'POST /api/knowledge': (body: Partial<KnowledgeItem>) => { const k: KnowledgeItem = { id: String(mockKnowledge.length + 1), title: body.title || '', content: body.content || '', category: body.category, tags: body.tags || [], createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }; mockKnowledge.push(k); return { success: true, data: k }; },
+  'PUT /api/knowledge/:id': (params: { id: string }, body: Partial<KnowledgeItem>) => { const idx = mockKnowledge.findIndex(k => k.id === params.id); if (idx !== -1) { mockKnowledge[idx] = { ...mockKnowledge[idx], ...body, updatedAt: new Date().toISOString() }; return { success: true, data: mockKnowledge[idx] }; } return { success: false, errorMessage: '知识不存在' }; },
+  'DELETE /api/knowledge/:id': (params: { id: string }) => { const idx = mockKnowledge.findIndex(k => k.id === params.id); if (idx !== -1) { mockKnowledge.splice(idx, 1); return { success: true }; } return { success: false, errorMessage: '知识不存在' }; },
+
+  'POST /api/chat': (_body: { message: string }) => { const reply = aiReplies[Math.floor(Math.random() * aiReplies.length)]; const m: ChatMessage = { id: String(mockMessages.length + 1), role: 'assistant', content: reply, timestamp: new Date().toISOString() }; mockMessages.push(m); return { success: true, data: { reply, timestamp: m.timestamp } }; },
+  'GET /api/chat/history': (params: { limit?: number }) => { const limit = params.limit || 20; return { success: true, data: mockMessages.slice(-limit) }; },
   'GET /api/chat/settings': () => ({ success: true, data: chatSettings }),
-
-  'PUT /api/chat/settings': (body: Partial<ChatSettings>) => {
-    chatSettings = { ...chatSettings, ...body };
-    return { success: true, data: chatSettings };
-  },
+  'PUT /api/chat/settings': (body: Partial<ChatSettings>) => { chatSettings = { ...chatSettings, ...body }; return { success: true, data: chatSettings }; },
 };
 
 export function setupMockServer() {
   const handleRequest = async (path: string, method: string, body?: any) => {
     const params: Record<string, string> = {};
-    let matchedPath = path;
-
     for (const pattern of Object.keys(mockHandlers)) {
       const [m, p] = pattern.split(' ');
       if (m !== method) continue;
-
-      const regex = new RegExp('^' + p.replace(/:(\w+)/g, (_, key) => {
-        return '(?<' + key + '>[^/]+)';
-      }) + '$');
-
-      const match = matchedPath.match(regex);
+      const regex = new RegExp('^' + p.replace(/:(\w+)/g, (_, key) => '(?<' + key + '>[^/]+)') + '$');
+      const match = path.match(regex);
       if (match) {
         Object.assign(params, match.groups || {});
         const handler = (mockHandlers as any)[pattern];
@@ -850,12 +270,8 @@ export function setupMockServer() {
     const path = urlObj.pathname;
     const method = options.method || 'GET';
     const body = options.body ? JSON.parse(options.body as string) : undefined;
-
     await new Promise(resolve => setTimeout(resolve, 200 + Math.random() * 300));
-
     const result = await handleRequest(path, method, body);
-    return {
-      json: () => Promise.resolve(result),
-    };
+    return { json: () => Promise.resolve(result) };
   };
 }
