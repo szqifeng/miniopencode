@@ -74,27 +74,30 @@ src/
 | 模块 | 路径 | 说明 |
 |------|------|------|
 | 工具管理 | /api/tools | CRUD 操作 |
-| 任务管理 | /api/tasks | CRUD + 启停控制 |
-| AI 聊天 | /api/chat | 对话和设置 |
+| 任务管理 | /api/tasks | CRUD + 启停控制 + 手动运行 |
+| 运行记录 | /api/runs | 查询任务运行结果 |
+| 报告管理 | /api/reports | 查询 Markdown 报告 |
+| 知识库 | /api/knowledge | CRUD 操作 |
+| 流式聊天 | /api/web/chat/stream | 任务编辑流式对话 |
 
-详细 API 文档见 `docs/postman/TaskScheduler_API.postman_collection.json`
+详细接口集合见仓库根目录 `postman_collection.json`
 
 ## 开发指南
 
 ### 添加新页面
 
 1. 在 `src/pages/` 下创建页面目录
-2. 创建 `index.tsx` 和 `index.less`
+2. 创建 `index.tsx` 和对应样式文件
 3. 在 `App.tsx` 中引入
 
 ### 添加新 API
 
-在 `src/mock/index.ts` 的 `mockHandlers` 中添加：
+在 `src/services/api.ts` 中补充前端请求封装，并在服务端同步添加对应接口：
 
 ```typescript
-'GET /api/your-endpoint': (params) => {
-  return { success: true, data: [...] };
-},
+export const yourAPI = {
+  getList: () => fetchJSON('/your-endpoint'),
+};
 ```
 
 ### 添加新组件
@@ -103,20 +106,21 @@ src/
 2. 使用 antd 基础组件
 3. 样式使用 LESS
 
-## Mock 数据说明
+## 数据联调说明
 
-项目使用 Mock 数据开发，通过劫持 `window.fetch` 实现：
+当前开发模式通过 Vite 代理访问本地后端：
 
-- 所有 API 请求使用 `(window as any).mockFetch()`
-- 无需后端即可运行
-- 切换到真实 API 只需修改 `src/services/api.ts`
+- 前端请求 `/api/*`
+- `vite.config.ts` 会代理到 `http://localhost:3000`
+- 任务编辑聊天使用 `/api/web/chat/stream`
+- 任务运行会由后端调用 agent 并生成 Markdown 报告
 
 ## 后续开发
 
 基于 `AGENTS.md` 文档继续开发：
 
-1. 确认其他 4 个页面的功能需求
-2. 实现后端 API 接口
+1. 根据需要补充更多任务执行工具
+2. 增加调度器与自动运行能力
 3. 添加用户认证与权限管理
 4. 考虑客户端封装（Tauri / Electron）
 

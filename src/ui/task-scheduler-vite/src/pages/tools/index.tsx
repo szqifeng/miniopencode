@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { Tool } from '../../services/types';
+import { toolsAPI } from '../../services/api';
 
 export default function ToolsPage() {
   const [tools, setTools] = useState<Tool[]>([]);
@@ -15,12 +16,13 @@ export default function ToolsPage() {
 
   const fetchTools = async () => {
     try {
-      const res = await (window as any).mockFetch('/api/tools');
-      const result = await res.json();
+      const result = await toolsAPI.getList();
       if (result.success && result.data) {
         setTools(result.data);
+      } else {
+        message.error(result.errorMessage || '获取工具列表失败');
       }
-    } catch (error) {
+    } catch {
       message.error('获取工具列表失败');
     }
   };
@@ -39,15 +41,14 @@ export default function ToolsPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await (window as any).mockFetch(`/api/tools/${id}`, { method: 'DELETE' });
-      const result = await res.json();
+      const result = await toolsAPI.delete(id);
       if (result.success) {
         message.success('删除成功');
-        fetchTools();
+        void fetchTools();
       } else {
         message.error(result.errorMessage || '删除失败');
       }
-    } catch (error) {
+    } catch {
       message.error('删除失败');
     }
   };
@@ -56,22 +57,14 @@ export default function ToolsPage() {
     try {
       const values = await form.validateFields();
       if (editingTool) {
-        const res = await (window as any).mockFetch(`/api/tools/${editingTool.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(values),
-        });
-        const result = await res.json();
+        const result = await toolsAPI.update(editingTool.id, values);
         if (result.success) {
           message.success('更新成功');
         } else {
           message.error(result.errorMessage || '更新失败');
         }
       } else {
-        const res = await (window as any).mockFetch('/api/tools', {
-          method: 'POST',
-          body: JSON.stringify(values),
-        });
-        const result = await res.json();
+        const result = await toolsAPI.create(values);
         if (result.success) {
           message.success('创建成功');
         } else {
@@ -79,7 +72,7 @@ export default function ToolsPage() {
         }
       }
       setModalVisible(false);
-      fetchTools();
+      void fetchTools();
     } catch (error) {
       console.error('提交失败', error);
     }

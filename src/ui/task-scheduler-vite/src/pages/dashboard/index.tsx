@@ -13,9 +13,6 @@ import {
   message,
 } from 'antd';
 import {
-  CheckCircleOutlined,
-  ClockCircleOutlined,
-  DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
   PauseCircleOutlined,
@@ -29,6 +26,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Run, Report, Task } from '../../services/types';
+import { reportsAPI, runsAPI, tasksAPI } from '../../services/api';
 
 const { Sider, Content } = Layout;
 
@@ -316,8 +314,7 @@ export default function Dashboard() {
 
   const fetchTasks = async () => {
     try {
-      const res = await (window as any).mockFetch('/api/tasks');
-      const result = await res.json();
+      const result = await tasksAPI.getList();
       if (result.success && result.data) {
         const nextTasks = result.data as Task[];
         setTasks(nextTasks);
@@ -328,6 +325,8 @@ export default function Dashboard() {
         if (!selectedTaskId || !nextTasks.some(task => task.id === selectedTaskId)) {
           setSelectedTaskId(nextTasks[0].id);
         }
+      } else {
+        message.error(result.errorMessage || '获取任务列表失败');
       }
     } catch {
       message.error('获取任务列表失败');
@@ -336,10 +335,11 @@ export default function Dashboard() {
 
   const fetchRuns = async () => {
     try {
-      const res = await (window as any).mockFetch('/api/runs');
-      const result = await res.json();
+      const result = await runsAPI.getList();
       if (result.success && result.data) {
         setRuns(result.data as Run[]);
+      } else {
+        message.error(result.errorMessage || '获取运行记录失败');
       }
     } catch {
       message.error('获取运行记录失败');
@@ -348,10 +348,11 @@ export default function Dashboard() {
 
   const fetchReports = async () => {
     try {
-      const res = await (window as any).mockFetch('/api/reports');
-      const result = await res.json();
+      const result = await reportsAPI.getList();
       if (result.success && result.data) {
         setReports(result.data as Report[]);
+      } else {
+        message.error(result.errorMessage || '获取报告失败');
       }
     } catch {
       message.error('获取报告失败');
@@ -394,6 +395,14 @@ export default function Dashboard() {
       .filter(report => report.taskId === selectedTaskId)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [reports, selectedTaskId]);
+
+  const taskActivity = useMemo(() => {
+    const reportByRunId = new Map(taskReports.map(report => [report.runId, report]));
+    return taskRuns.map(run => ({
+      run,
+      report: reportByRunId.get(run.id),
+    }));
+  }, [taskReports, taskRuns]);
 
   const latestReport = taskReports[0];
   const lastFailedRun = taskRuns.find(run => run.status === 'failed');
@@ -451,30 +460,6 @@ export default function Dashboard() {
     setTaskModalVisible(false);
   };
 
-  const handleDeleteTask = () => {
-    if (!selectedTask) {
-      return;
-    }
-
-    Modal.confirm({
-      title: `删除任务「${selectedTask.name}」`,
-      content: '任务、运行记录和报告视图都会从当前工作台中移除。',
-      okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      async onOk() {
-        try {
-          await (window as any).mockFetch(`/api/tasks/${selectedTask.id}`, { method: 'DELETE' });
-          message.success('任务已删除');
-          setSelectedTaskId(null);
-          await fetchTasks();
-        } catch {
-          message.error('删除失败');
-        }
-      },
-    });
-  };
-
   const handleSubmitTask = async () => {
     try {
       const values = await form.validateFields();
@@ -485,23 +470,23 @@ export default function Dashboard() {
       };
 
       if (editingTask) {
-        await (window as any).mockFetch(`/api/tasks/${editingTask.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(payload),
-        });
+        const result = await tasksAPI.update(editingTask.id, payload);
+        if (!result.success) {
+          throw new Error(result.errorMessage || '任务更新失败');
+        }
         message.success('任务已更新');
       } else {
-        await (window as any).mockFetch('/api/tasks', {
-          method: 'POST',
-          body: JSON.stringify(payload),
-        });
+        const result = await tasksAPI.create(payload);
+        if (!result.success) {
+          throw new Error(result.errorMessage || '任务创建失败');
+        }
         message.success('任务已创建');
       }
 
       closeTaskModal();
       await fetchTasks();
-    } catch {
-      message.error('请先补全任务配置');
+    } catch (error) {
+      message.error((error as Error).message || '请先补全任务配置');
     }
   };
 
@@ -511,11 +496,14 @@ export default function Dashboard() {
     }
 
     try {
-      await (window as any).mockFetch(`/api/tasks/${selectedTask.id}/run`, { method: 'POST' });
+      const result = await tasksAPI.run(selectedTask.id);
+      if (!result.success) {
+        throw new Error(result.errorMessage || '执行失败');
+      }
       message.success('任务已触发执行');
       await Promise.all([fetchTasks(), fetchRuns(), fetchReports()]);
-    } catch {
-      message.error('执行失败');
+    } catch (error) {
+      message.error((error as Error).message || '执行失败');
     }
   };
 
@@ -526,11 +514,17 @@ export default function Dashboard() {
 
     const action = selectedTask.status === 'active' ? 'disable' : 'enable';
     try {
-      await (window as any).mockFetch(`/api/tasks/${selectedTask.id}/${action}`, { method: 'POST' });
+      const result =
+        action === 'disable'
+          ? await tasksAPI.disable(selectedTask.id)
+          : await tasksAPI.enable(selectedTask.id);
+      if (!result.success) {
+        throw new Error(result.errorMessage || '操作失败');
+      }
       message.success(selectedTask.status === 'active' ? '任务已暂停' : '任务已恢复');
       await fetchTasks();
-    } catch {
-      message.error('操作失败');
+    } catch (error) {
+      message.error((error as Error).message || '操作失败');
     }
   };
 
@@ -937,7 +931,7 @@ export default function Dashboard() {
 
               <section className="task-detail-grid">
                 <div className="task-detail-main">
-                  <Card title="任务简报" className="detail-card">
+                  <Card title="任务简报" className="detail-card detail-card-static">
                     <div className="detail-kv-grid">
                       <div className="detail-kv">
                         <span>输入文件</span>
@@ -961,7 +955,7 @@ export default function Dashboard() {
                   <Card
                     title="最新报告"
                     extra={latestReport ? <span className="card-meta-text">{formatDateTime(latestReport.createdAt)}</span> : null}
-                    className="detail-card"
+                    className="detail-card detail-card-report"
                   >
                     {latestReport ? (
                       <div className="report-preview">
@@ -980,100 +974,37 @@ export default function Dashboard() {
                     )}
                   </Card>
 
-                  <Card title="报告历史" className="detail-card">
-                    {taskReports.length === 0 ? (
-                      <Empty description="暂无报告记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
-                    ) : (
-                      <div className="history-list">
-                        {taskReports.map(report => (
-                          <div key={report.id} className="history-row">
-                            <div>
-                              <strong>{formatDateTime(report.createdAt)}</strong>
-                              <p>{toExcerpt(report.contentMarkdown)}</p>
-                            </div>
-                            <span className="history-tag">{report.runId}</span>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </Card>
                 </div>
 
                 <div className="task-detail-side">
-                  <Card title="最近运行" className="detail-card">
-                    {taskRuns.length === 0 ? (
+                  <Card title="运行与报告历史" className="detail-card detail-card-activity">
+                    {taskActivity.length === 0 ? (
                       <Empty description="暂无运行记录" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                     ) : (
-                      <div className="run-list">
-                        {taskRuns.map(run => {
+                      <div className="activity-list">
+                        {taskActivity.map(({ run, report }) => {
                           const runStatusMeta = getRunStatusMeta(run.status);
                           return (
-                            <div key={run.id} className="run-row">
+                            <div key={run.id} className="activity-row">
                               <div className={`run-status-dot ${runStatusMeta.tone}`} />
-                              <div className="run-row-content">
-                                <div className="run-row-top">
+                              <div className="activity-row-content">
+                                <div className="activity-row-top">
                                   <strong>{formatDateTime(run.startedAt)}</strong>
                                   <span className={`run-status-pill ${runStatusMeta.tone}`}>
                                     {runStatusMeta.label}
                                   </span>
                                 </div>
-                                <p>耗时 {formatDuration(run)}</p>
-                                {run.errorMessage ? <p>{run.errorMessage}</p> : null}
+                                <p>{report ? toExcerpt(report.contentMarkdown) : run.errorMessage || '该次执行未生成报告。'}</p>
+                                <div className="activity-row-meta">
+                                  <span>{run.id}</span>
+                                  <span>{report ? report.id : formatDuration(run)}</span>
+                                </div>
                               </div>
                             </div>
                           );
                         })}
                       </div>
                     )}
-                  </Card>
-
-                  <Card title="执行规则" className="detail-card">
-                    <div className="rule-list">
-                      <div className="rule-row">
-                        <ClockCircleOutlined />
-                        <div>
-                          <strong>{getScheduleLabel(selectedTask.schedule)}</strong>
-                          <p>{selectedTask.scheduleTime || '未设具体时间'}</p>
-                        </div>
-                      </div>
-                      <div className="rule-row">
-                        <FileTextOutlined />
-                        <div>
-                          <strong>CSV / XLSX 输入</strong>
-                          <p>当前首版只接受表格文件，并统一生成 Markdown 报告。</p>
-                        </div>
-                      </div>
-                      <div className="rule-row">
-                        <CheckCircleOutlined />
-                        <div>
-                          <strong>受控聊天编辑</strong>
-                          <p>聊天不作为开放式助手，仅用于更新任务草稿。</p>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-
-                  <Card title="快捷操作" className="detail-card">
-                    <div className="action-stack">
-                      <Button type="primary" icon={<RocketOutlined />} block onClick={handleRunTask}>
-                        手动运行一次
-                      </Button>
-                      <Button
-                        block
-                        icon={
-                          selectedTask.status === 'active' ? <PauseCircleOutlined /> : <PlayCircleOutlined />
-                        }
-                        onClick={handleToggleTask}
-                      >
-                        {selectedTask.status === 'active' ? '暂停当前任务' : '恢复当前任务'}
-                      </Button>
-                      <Button block icon={<EditOutlined />} onClick={openEditModal}>
-                        进入聊天式编辑
-                      </Button>
-                      <Button block danger icon={<DeleteOutlined />} onClick={handleDeleteTask}>
-                        删除任务
-                      </Button>
-                    </div>
                   </Card>
                 </div>
               </section>

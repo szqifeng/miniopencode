@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, Table, Tag, Button, Space, Modal, Form, Input, Select, message, Popconfirm } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import type { KnowledgeItem } from '../../services/types';
+import { knowledgeAPI } from '../../services/api';
 
 export default function KnowledgePage() {
   const [knowledge, setKnowledge] = useState<KnowledgeItem[]>([]);
@@ -15,12 +16,13 @@ export default function KnowledgePage() {
 
   const fetchKnowledge = async () => {
     try {
-      const res = await (window as any).mockFetch('/api/knowledge');
-      const result = await res.json();
+      const result = await knowledgeAPI.getList();
       if (result.success && result.data) {
         setKnowledge(result.data);
+      } else {
+        message.error(result.errorMessage || '获取知识库失败');
       }
-    } catch (error) {
+    } catch {
       message.error('获取知识库失败');
     }
   };
@@ -39,15 +41,14 @@ export default function KnowledgePage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await (window as any).mockFetch(`/api/knowledge/${id}`, { method: 'DELETE' });
-      const result = await res.json();
+      const result = await knowledgeAPI.delete(id);
       if (result.success) {
         message.success('删除成功');
-        fetchKnowledge();
+        void fetchKnowledge();
       } else {
         message.error(result.errorMessage || '删除失败');
       }
-    } catch (error) {
+    } catch {
       message.error('删除失败');
     }
   };
@@ -56,22 +57,14 @@ export default function KnowledgePage() {
     try {
       const values = await form.validateFields();
       if (editingItem) {
-        const res = await (window as any).mockFetch(`/api/knowledge/${editingItem.id}`, {
-          method: 'PUT',
-          body: JSON.stringify(values),
-        });
-        const result = await res.json();
+        const result = await knowledgeAPI.update(editingItem.id, values);
         if (result.success) {
           message.success('更新成功');
         } else {
           message.error(result.errorMessage || '更新失败');
         }
       } else {
-        const res = await (window as any).mockFetch('/api/knowledge', {
-          method: 'POST',
-          body: JSON.stringify(values),
-        });
-        const result = await res.json();
+        const result = await knowledgeAPI.create(values);
         if (result.success) {
           message.success('创建成功');
         } else {
@@ -79,7 +72,7 @@ export default function KnowledgePage() {
         }
       }
       setModalVisible(false);
-      fetchKnowledge();
+      void fetchKnowledge();
     } catch (error) {
       console.error('提交失败', error);
     }

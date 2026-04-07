@@ -164,14 +164,15 @@ type Report = {
 
 ---
 
-## Mock 与运行逻辑
+## 真实接口与运行逻辑
 
-当前 UI 主要依赖 `src/mock/index.ts`。
+当前 UI 已切到真实后端接口，主数据入口是 `src/services/api.ts`。
 
-### Mock 约束
+### 接口约束
 
-- 页面通过 `window.mockFetch` 请求 mock API
-- 手动运行任务时要同时生成 `Run` 和 `Report`
+- 任务、运行、报告、工具、知识库都通过 `/api/*` 访问
+- 聊天式任务编辑继续走 `/api/web/chat/stream`
+- 手动运行任务时后端必须同时生成 `Run` 和 `Report`
 - 报告必须通过 `taskId` 与 `runId` 挂到任务结果下
 - 任务状态变化要同步更新时间和调度时间
 

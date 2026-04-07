@@ -10,12 +10,105 @@ import { exec } from 'node:child_process';
 import { promisify } from 'node:util';
 import https from 'node:https';
 import http from 'node:http';
+import * as XLSX from 'xlsx';
 import { getCurrentSessionId } from '../agent/process.js';
 
 interface ToolResult {
   output: string;
   title: string;
   metadata: Record<string, unknown>;
+}
+
+export interface BuiltinToolCatalogEntry {
+  id: string;
+  name: string;
+  type: 'script' | 'api' | 'shell';
+  description: string;
+}
+
+function resolveToolPath(targetPath: string): string {
+  if (path.isAbsolute(targetPath)) {
+    return targetPath;
+  }
+  return path.resolve(process.cwd(), targetPath);
+}
+
+function parseStructuredRows(rowsJson: string): Array<Record<string, unknown>> {
+  const parsed = JSON.parse(rowsJson);
+  if (!Array.isArray(parsed)) {
+    throw new Error('rowsJson 必须是 JSON 数组');
+  }
+
+  return parsed.map((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) {
+      throw new Error('rowsJson 内的每一项都必须是对象');
+    }
+    return row as Record<string, unknown>;
+  });
+}
+
+function parseCsvLine(line: string, delimiter = ','): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const char = line[i];
+    const nextChar = line[i + 1];
+
+    if (char === '"') {
+      if (inQuotes && nextChar === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (char === delimiter && !inQuotes) {
+      result.push(current);
+      current = '';
+      continue;
+    }
+
+    current += char;
+  }
+
+  result.push(current);
+  return result;
+}
+
+function parseCsvContent(content: string, delimiter = ','): Array<Record<string, string>> {
+  const normalized = content.replace(/^\uFEFF/, '').trim();
+  if (!normalized) {
+    return [];
+  }
+
+  const lines = normalized.split(/\r?\n/).filter(Boolean);
+  if (lines.length === 0) {
+    return [];
+  }
+
+  const headers = parseCsvLine(lines[0], delimiter);
+  return lines.slice(1).map((line) => {
+    const values = parseCsvLine(line, delimiter);
+    return headers.reduce<Record<string, string>>((row, header, index) => {
+      row[header] = values[index] ?? '';
+      return row;
+    }, {});
+  });
+}
+
+function stringifyCsvValue(value: unknown, delimiter = ','): string {
+  const normalized = value == null ? '' : String(value);
+  if (normalized.includes('"')) {
+    return `"${normalized.replace(/"/g, '""')}"`;
+  }
+  if (normalized.includes(delimiter) || normalized.includes('\n')) {
+    return `"${normalized}"`;
+  }
+  return normalized;
 }
 
 const readTool = {
@@ -28,10 +121,11 @@ const readTool = {
     },
     required: ['path']
   }),
-  async execute({ path }: { path: string }): Promise<ToolResult> {
+  async execute({ path: targetPath }: { path: string }): Promise<ToolResult> {
     try {
-      const content = await fs.readFile(path, 'utf-8');
-      return { output: content, title: `文件: ${path}`, metadata: { path } };
+      const resolvedPath = resolveToolPath(targetPath);
+      const content = await fs.readFile(resolvedPath, 'utf-8');
+      return { output: content, title: `文件: ${resolvedPath}`, metadata: { path: resolvedPath } };
     } catch (error) {
       return { output: `读取失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
     }
@@ -49,10 +143,15 @@ const writeTool = {
     },
     required: ['path', 'content']
   }),
-  async execute({ path, content }: { path: string; content: string }): Promise<ToolResult> {
+  async execute({ path: targetPath, content }: { path: string; content: string }): Promise<ToolResult> {
     try {
-      await fs.writeFile(path, content, 'utf-8');
-      return { output: `已写入文件: ${path}`, title: '写入成功', metadata: { path, bytes: Buffer.byteLength(content, 'utf-8') } };
+      const resolvedPath = resolveToolPath(targetPath);
+      await fs.writeFile(resolvedPath, content, 'utf-8');
+      return {
+        output: `已写入文件: ${resolvedPath}`,
+        title: '写入成功',
+        metadata: { path: resolvedPath, bytes: Buffer.byteLength(content, 'utf-8') }
+      };
     } catch (error) {
       return { output: `写入失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
     }
@@ -71,17 +170,219 @@ const editTool = {
     },
     required: ['path', 'oldString', 'newString']
   }),
-  async execute({ path, oldString, newString }: { path: string; oldString: string; newString: string }): Promise<ToolResult> {
+  async execute({ path: targetPath, oldString, newString }: { path: string; oldString: string; newString: string }): Promise<ToolResult> {
     try {
-      const content = await fs.readFile(path, 'utf-8');
+      const resolvedPath = resolveToolPath(targetPath);
+      const content = await fs.readFile(resolvedPath, 'utf-8');
       if (!content.includes(oldString)) {
         return { output: `未找到要替换的字符串`, title: '错误', metadata: { error: 'oldString not found in file' } };
       }
       const newContent = content.replace(oldString, newString);
-      await fs.writeFile(path, newContent, 'utf-8');
-      return { output: `已编辑文件: ${path}`, title: '编辑成功', metadata: { path } };
+      await fs.writeFile(resolvedPath, newContent, 'utf-8');
+      return { output: `已编辑文件: ${resolvedPath}`, title: '编辑成功', metadata: { path: resolvedPath } };
     } catch (error) {
       return { output: `编辑失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const excelInspectTool = {
+  id: 'excel_inspect',
+  description: '读取 Excel 工作簿结构、列名和预览数据',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'Excel 文件路径（.xlsx）' },
+      sheet: { type: 'string', description: '可选：要读取的 sheet 名称' },
+      maxRows: { type: 'number', description: '预览行数，默认 20' }
+    },
+    required: ['path']
+  }),
+  async execute({ path: targetPath, sheet, maxRows = 20 }: { path: string; sheet?: string; maxRows?: number }): Promise<ToolResult> {
+    try {
+      const resolvedPath = resolveToolPath(targetPath);
+      const workbook = XLSX.read(await fs.readFile(resolvedPath), { type: 'buffer', cellDates: true });
+      const selectedSheet = sheet || workbook.SheetNames[0];
+      if (!selectedSheet || !workbook.Sheets[selectedSheet]) {
+        return {
+          output: `未找到 sheet: ${sheet || '(空)'}`,
+          title: '错误',
+          metadata: { path: resolvedPath, availableSheets: workbook.SheetNames }
+        };
+      }
+
+      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[selectedSheet], {
+        defval: '',
+        raw: false
+      });
+      const previewRows = rows.slice(0, Math.max(1, Math.min(maxRows, 100)));
+      const columns = previewRows.length > 0
+        ? Array.from(new Set(previewRows.flatMap((row) => Object.keys(row))))
+        : [];
+
+      const output = [
+        `path: ${resolvedPath}`,
+        `sheets: ${workbook.SheetNames.join(', ')}`,
+        `selectedSheet: ${selectedSheet}`,
+        `rowCount: ${rows.length}`,
+        `columns: ${columns.join(', ') || '(none)'}`,
+        'preview:',
+        JSON.stringify(previewRows, null, 2)
+      ].join('\n');
+
+      return {
+        output,
+        title: `Excel 预览: ${path.basename(resolvedPath)}`,
+        metadata: {
+          path: resolvedPath,
+          sheets: workbook.SheetNames,
+          selectedSheet,
+          rowCount: rows.length,
+          columns
+        }
+      };
+    } catch (error) {
+      return { output: `读取 Excel 失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const excelWriteTool = {
+  id: 'excel_write',
+  description: '将 JSON 数组写入 Excel 文件中的指定 sheet',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'Excel 文件路径（.xlsx）' },
+      sheet: { type: 'string', description: 'sheet 名称' },
+      rowsJson: { type: 'string', description: 'JSON 数组字符串，例如 [{\"name\":\"A\",\"value\":1}]' },
+      mode: { type: 'string', description: 'replace 或 append，默认 replace' }
+    },
+    required: ['path', 'sheet', 'rowsJson']
+  }),
+  async execute({ path: targetPath, sheet, rowsJson, mode = 'replace' }: { path: string; sheet: string; rowsJson: string; mode?: 'replace' | 'append' }): Promise<ToolResult> {
+    try {
+      const resolvedPath = resolveToolPath(targetPath);
+      const incomingRows = parseStructuredRows(rowsJson);
+      let workbook: XLSX.WorkBook;
+      let finalRows = incomingRows;
+
+      try {
+        workbook = XLSX.read(await fs.readFile(resolvedPath), { type: 'buffer' });
+      } catch {
+        workbook = XLSX.utils.book_new();
+      }
+
+      if (mode === 'append' && workbook.Sheets[sheet]) {
+        const existingRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(workbook.Sheets[sheet], {
+          defval: '',
+          raw: false
+        });
+        finalRows = [...existingRows, ...incomingRows];
+      }
+
+      workbook.Sheets[sheet] = XLSX.utils.json_to_sheet(finalRows);
+      if (!workbook.SheetNames.includes(sheet)) {
+        workbook.SheetNames.push(sheet);
+      }
+
+      XLSX.writeFile(workbook, resolvedPath);
+
+      return {
+        output: `已写入 Excel 文件 ${resolvedPath} 的 sheet ${sheet}，共 ${finalRows.length} 行。`,
+        title: 'Excel 写入成功',
+        metadata: { path: resolvedPath, sheet, mode, rowCount: finalRows.length }
+      };
+    } catch (error) {
+      return { output: `写入 Excel 失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const csvInspectTool = {
+  id: 'csv_inspect',
+  description: '读取 CSV 的列名、行数和预览数据',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'CSV 文件路径' },
+      delimiter: { type: 'string', description: '分隔符，默认英文逗号' },
+      maxRows: { type: 'number', description: '预览行数，默认 20' }
+    },
+    required: ['path']
+  }),
+  async execute({ path: targetPath, delimiter = ',', maxRows = 20 }: { path: string; delimiter?: string; maxRows?: number }): Promise<ToolResult> {
+    try {
+      const resolvedPath = resolveToolPath(targetPath);
+      const content = await fs.readFile(resolvedPath, 'utf-8');
+      const rows = parseCsvContent(content, delimiter);
+      const previewRows = rows.slice(0, Math.max(1, Math.min(maxRows, 100)));
+      const columns = previewRows.length > 0 ? Object.keys(previewRows[0]) : [];
+
+      const output = [
+        `path: ${resolvedPath}`,
+        `delimiter: ${delimiter}`,
+        `rowCount: ${rows.length}`,
+        `columns: ${columns.join(', ') || '(none)'}`,
+        'preview:',
+        JSON.stringify(previewRows, null, 2)
+      ].join('\n');
+
+      return {
+        output,
+        title: `CSV 预览: ${path.basename(resolvedPath)}`,
+        metadata: { path: resolvedPath, delimiter, rowCount: rows.length, columns }
+      };
+    } catch (error) {
+      return { output: `读取 CSV 失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
+    }
+  }
+};
+
+const csvWriteTool = {
+  id: 'csv_write',
+  description: '将 JSON 数组写入 CSV 文件',
+  inputSchema: jsonSchema({
+    type: 'object',
+    properties: {
+      path: { type: 'string', description: 'CSV 文件路径' },
+      rowsJson: { type: 'string', description: 'JSON 数组字符串，例如 [{\"name\":\"A\",\"value\":1}]' },
+      delimiter: { type: 'string', description: '分隔符，默认英文逗号' },
+      mode: { type: 'string', description: 'replace 或 append，默认 replace' }
+    },
+    required: ['path', 'rowsJson']
+  }),
+  async execute({ path: targetPath, rowsJson, delimiter = ',', mode = 'replace' }: { path: string; rowsJson: string; delimiter?: string; mode?: 'replace' | 'append' }): Promise<ToolResult> {
+    try {
+      const resolvedPath = resolveToolPath(targetPath);
+      const incomingRows = parseStructuredRows(rowsJson);
+      let finalRows = incomingRows;
+
+      if (mode === 'append') {
+        try {
+          const existingContent = await fs.readFile(resolvedPath, 'utf-8');
+          const existingRows = parseCsvContent(existingContent, delimiter);
+          finalRows = [...existingRows, ...incomingRows];
+        } catch {
+          finalRows = incomingRows;
+        }
+      }
+
+      const headers = Array.from(new Set(finalRows.flatMap((row) => Object.keys(row))));
+      const lines = [
+        headers.join(delimiter),
+        ...finalRows.map((row) => headers.map((header) => stringifyCsvValue(row[header], delimiter)).join(delimiter))
+      ];
+
+      await fs.writeFile(resolvedPath, `${lines.join('\n')}\n`, 'utf-8');
+
+      return {
+        output: `已写入 CSV 文件 ${resolvedPath}，共 ${finalRows.length} 行。`,
+        title: 'CSV 写入成功',
+        metadata: { path: resolvedPath, delimiter, mode, rowCount: finalRows.length, columns: headers }
+      };
+    } catch (error) {
+      return { output: `写入 CSV 失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
     }
   }
 };
@@ -358,6 +659,21 @@ const readTodoTool = {
   }
 };
 
+export const BUILTIN_TOOL_CATALOG: BuiltinToolCatalogEntry[] = [
+  { id: 'read', name: '文件读取', type: 'script', description: readTool.description },
+  { id: 'write', name: '文件写入', type: 'script', description: writeTool.description },
+  { id: 'edit', name: '文件编辑', type: 'script', description: editTool.description },
+  { id: 'grep', name: '内容搜索', type: 'script', description: grepTool.description },
+  { id: 'bash', name: '命令执行', type: 'shell', description: bashTool.description },
+  { id: 'webfetch', name: '网页抓取', type: 'api', description: webfetchTool.description },
+  { id: 'excel_inspect', name: 'Excel 读取', type: 'script', description: excelInspectTool.description },
+  { id: 'excel_write', name: 'Excel 写入', type: 'script', description: excelWriteTool.description },
+  { id: 'csv_inspect', name: 'CSV 读取', type: 'script', description: csvInspectTool.description },
+  { id: 'csv_write', name: 'CSV 写入', type: 'script', description: csvWriteTool.description },
+  { id: 'writeTodo', name: '待办写入', type: 'script', description: writeTodoTool.description },
+  { id: 'readTodo', name: '待办读取', type: 'script', description: readTodoTool.description }
+];
+
 export const TOOLS: ToolSet = {
   read: readTool,
   write: writeTool,
@@ -365,6 +681,10 @@ export const TOOLS: ToolSet = {
   grep: grepTool,
   bash: bashTool,
   webfetch: webfetchTool,
+  excel_inspect: excelInspectTool,
+  excel_write: excelWriteTool,
+  csv_inspect: csvInspectTool,
+  csv_write: csvWriteTool,
   writeTodo: writeTodoTool,
   readTodo: readTodoTool
 } as ToolSet;

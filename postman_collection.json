@@ -1,103 +1,490 @@
 {
   "info": {
     "name": "MiniOpenCode API",
-    "description": "AI Agent 流式对话服务",
+    "description": "包含任务工作台后端、流式聊天、工具管理、知识库管理的 Postman 集合。",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
     { "key": "baseUrl", "value": "http://localhost:3000" },
-    { "key": "apiKey", "value": "om_fixed_api_key_12345" }
+    { "key": "apiKey", "value": "om_fixed_api_key_12345" },
+    { "key": "taskId", "value": "task_demo_id" },
+    { "key": "runId", "value": "run_demo_id" },
+    { "key": "reportId", "value": "report_demo_id" },
+    { "key": "toolId", "value": "tool_demo_id" },
+    { "key": "knowledgeId", "value": "knowledge_demo_id" },
+    { "key": "sessionId", "value": "test_session_001999" }
   ],
   "item": [
     {
-      "name": "健康检查",
-      "request": {
-        "method": "GET",
-        "url": { "raw": "{{baseUrl}}/health", "host": ["{{baseUrl}}"], "path": ["health"] }
-      }
-    },
-    {
-      "name": "Chat - 流式对话",
+      "name": "Health",
       "item": [
         {
-          "name": "POST /api/web/chat/stream (无工具-单轮)",
+          "name": "GET /health",
           "request": {
-            "method": "POST",
-            "url": { "raw": "{{baseUrl}}/api/web/chat/stream", "host": ["{{baseUrl}}"], "path": ["api", "web", "chat", "stream"] },
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-Key", "value": "{{apiKey}}" }
-            ],
-            "body": { "mode": "raw", "raw": "{\n  \"messages\": [{\"role\": \"user\", \"content\": \"你好，2+2等于几\"}],\n  \"system\": \"你是助手\",\n  \"useTools\": false\n}" }
-          }
-        },
-        {
-          "name": "POST /api/web/chat/stream (有工具-单轮)",
-          "request": {
-            "method": "POST",
-            "url": { "raw": "{{baseUrl}}/api/web/chat/stream", "host": ["{{baseUrl}}"], "path": ["api", "web", "chat", "stream"] },
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-Key", "value": "{{apiKey}}" }
-            ],
-            "body": { "mode": "raw", "raw": "{\n  \"messages\": [{\"role\": \"user\", \"content\": \"深圳天气怎么样\"}],\n  \"system\": \"你是助手，可以调用工具\",\n  \"useTools\": true\n}" }
-          }
-        },
-        {
-          "name": "POST /api/web/chat/stream (多轮对话-携带sessionId)",
-          "request": {
-            "method": "POST",
-            "url": { "raw": "{{baseUrl}}/api/web/chat/stream", "host": ["{{baseUrl}}"], "path": ["api", "web", "chat", "stream"] },
-            "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "X-API-Key", "value": "{{apiKey}}" }
-            ],
-            "body": { "mode": "raw", "raw": "{\n  \"sessionId\": \"test_session_001\",\n  \"messages\": [{\"role\": \"user\", \"content\": \"深圳天气怎么样\"}],\n  \"system\": \"你是助手，可以调用工具\",\n  \"useTools\": true\n}" }
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": ["{{baseUrl}}"],
+              "path": ["health"]
+            }
           }
         }
       ]
     },
     {
-      "name": "Session - 会话管理",
+      "name": "Tasks",
       "item": [
         {
-          "name": "GET /api/web/sessions (获取所有会话)",
-          "request": {
-            "method": "GET",
-            "url": { "raw": "{{baseUrl}}/api/web/sessions", "host": ["{{baseUrl}}"], "path": ["api", "web", "sessions"] },
-            "header": [
-              { "key": "X-API-Key", "value": "{{apiKey}}" }
-            ]
-          }
-        },
-        {
-          "name": "GET /api/web/chat/session/:sessionId (获取单个会话)",
+          "name": "GET /api/tasks",
           "request": {
             "method": "GET",
             "url": {
-              "raw": "{{baseUrl}}/api/web/chat/session/:sessionId",
+              "raw": "{{baseUrl}}/api/tasks",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "web", "chat", "session", ":sessionId"],
-              "variable": [{ "key": "sessionId", "value": "test_session_001" }]
-            },
-            "header": [
-              { "key": "X-API-Key", "value": "{{apiKey}}" }
-            ]
+              "path": ["api", "tasks"]
+            }
           }
         },
         {
-          "name": "DELETE /api/web/chat/session/:sessionId (删除会话)",
+          "name": "POST /api/tasks",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"深圳天气日报任务\",\n  \"inputFilePath\": \"./data/demo/weather.xlsx\",\n  \"schedule\": \"daily\",\n  \"scheduleTime\": \"09:00\",\n  \"status\": \"active\",\n  \"analysisGoal\": \"输出天气摘要、体感提示和邮编信息对照结果\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/tasks/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/tasks/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"深圳天气日报任务-更新\",\n  \"analysisGoal\": \"输出天气摘要、邮编和出行建议\",\n  \"schedule\": \"weekly\",\n  \"scheduleTime\": \"周一 09:00\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/tasks/:id",
           "request": {
             "method": "DELETE",
             "url": {
-              "raw": "{{baseUrl}}/api/web/chat/session/:sessionId",
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}",
               "host": ["{{baseUrl}}"],
-              "path": ["api", "web", "chat", "session", ":sessionId"],
-              "variable": [{ "key": "sessionId", "value": "test_session_001" }]
+              "path": ["api", "tasks", "{{taskId}}"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/tasks/:id/run",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/run",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}", "run"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/tasks/:id/enable",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/enable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}", "enable"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/tasks/:id/disable",
+          "request": {
+            "method": "POST",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/disable",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}", "disable"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/tasks/:taskId/runs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}", "runs"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/tasks/:taskId/reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tasks/{{taskId}}/reports",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tasks", "{{taskId}}", "reports"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Runs & Reports",
+      "item": [
+        {
+          "name": "GET /api/runs",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/runs",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "runs"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/runs/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/runs/{{runId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "runs", "{{runId}}"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/reports",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/reports",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reports"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/reports/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/reports/{{reportId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "reports", "{{reportId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Tools",
+      "item": [
+        {
+          "name": "GET /api/tools",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tools",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tools"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/tools",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tools",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tools"]
             },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"手动校验脚本\",\n  \"type\": \"script\",\n  \"description\": \"补充人工检查流程\",\n  \"status\": \"active\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/tools/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/tools/{{toolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tools", "{{toolId}}"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/tools/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tools/{{toolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tools", "{{toolId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"补充人工检查与归档流程\",\n  \"status\": \"inactive\"\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/tools/:id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/tools/{{toolId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "tools", "{{toolId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Knowledge",
+      "item": [
+        {
+          "name": "GET /api/knowledge",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/knowledge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "knowledge"]
+            }
+          }
+        },
+        {
+          "name": "POST /api/knowledge",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/knowledge",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "knowledge"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"深圳天气任务规范\",\n  \"content\": \"需要同时输出天气摘要与邮编信息。\",\n  \"category\": \"任务规则\",\n  \"tags\": [\"weather\", \"zipcode\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/knowledge/:id",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/knowledge/{{knowledgeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "knowledge", "{{knowledgeId}}"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/knowledge/:id",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/knowledge/{{knowledgeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "knowledge", "{{knowledgeId}}"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"content\": \"需要同时输出天气摘要、邮编信息和出行建议。\",\n  \"tags\": [\"weather\", \"zipcode\", \"travel\"]\n}"
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/knowledge/:id",
+          "request": {
+            "method": "DELETE",
+            "url": {
+              "raw": "{{baseUrl}}/api/knowledge/{{knowledgeId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "knowledge", "{{knowledgeId}}"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Chat Compatibility",
+      "item": [
+        {
+          "name": "POST /api/chat",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/chat",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"创建一个每周运行的深圳天气任务\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/chat/history",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/chat/history?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat", "history"],
+              "query": [
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /api/chat/settings",
+          "request": {
+            "method": "GET",
+            "url": {
+              "raw": "{{baseUrl}}/api/chat/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat", "settings"]
+            }
+          }
+        },
+        {
+          "name": "PUT /api/chat/settings",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/chat/settings",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "chat", "settings"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"temperature\": 0.1,\n  \"maxTokens\": 2048\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Stream Chat",
+      "item": [
+        {
+          "name": "POST /api/web/chat/stream",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/web/chat/stream",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "web", "chat", "stream"]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sessionId\": \"{{sessionId}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"深圳天气怎么样，然后看看深圳的邮编\"\n    }\n  ],\n  \"useTools\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /api/web/sessions",
+          "request": {
+            "method": "GET",
             "header": [
               { "key": "X-API-Key", "value": "{{apiKey}}" }
-            ]
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/web/sessions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "web", "sessions"]
+            }
+          }
+        },
+        {
+          "name": "GET /api/web/chat/session/:sessionId",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/web/chat/session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "web", "chat", "session", "{{sessionId}}"]
+            }
+          }
+        },
+        {
+          "name": "DELETE /api/web/chat/session/:sessionId",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "X-API-Key", "value": "{{apiKey}}" }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/web/chat/session/{{sessionId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "web", "chat", "session", "{{sessionId}}"]
+            }
           }
         }
       ]
