@@ -1,5 +1,5 @@
 import './index.css';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
   Button,
   Card,
@@ -21,25 +21,25 @@ import {
   RocketOutlined,
   SearchOutlined,
   SendOutlined,
+  UploadOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Run, Report, Task } from '../../services/types';
+import type { Run, Report, Task, TaskDraftResolveResult, TaskFile, TaskScheduleConfig } from '../../services/types';
 import { reportsAPI, runsAPI, tasksAPI } from '../../services/api';
 
 const { Sider, Content } = Layout;
 
 type TaskFormValues = Pick<
   Task,
-  'name' | 'inputFilePath' | 'schedule' | 'scheduleTime' | 'analysisGoal' | 'status' | 'outputFormat'
->;
-
-type DraftParseResult = {
-  updates: Partial<TaskFormValues>;
-  summary: string[];
-  missing: string[];
-  warnings: string[];
+  'name' | 'inputFilePath' | 'schedule' | 'analysisGoal' | 'status' | 'outputFormat'
+> & {
+  scheduleConfig: {
+    minute: number | null;
+    time: string;
+    weekday: number | null;
+  };
 };
 
 type ModalChatMessage = {
@@ -53,21 +53,69 @@ type ModalChatMessage = {
 const quickPrompts = [
   '每周一早上 9 点分析 sales-weekly.xlsx，输出销售摘要',
   '每天下午 6 点分析 inventory-daily.csv，输出库存变化报告',
-  '现在分析 finance-snapshot.xlsx，输出费用异常说明',
+  '手动执行 finance-snapshot.xlsx，输出费用异常说明',
 ];
 
 const initialAssistantMessage =
   '只描述任务本身即可，例如文件、执行频率和想输出的摘要。我会把内容整理成右侧结构化草稿。';
 const chatApiKey = 'om_fixed_api_key_12345';
+function createEmptyScheduleConfig() {
+  return {
+    minute: null,
+    time: '',
+    weekday: null,
+  };
+}
+
+function toApiScheduleConfig(scheduleConfig?: TaskFormValues['scheduleConfig'] | null): TaskScheduleConfig {
+  return {
+    minute: typeof scheduleConfig?.minute === 'number' ? scheduleConfig.minute : undefined,
+    time: scheduleConfig?.time || undefined,
+    weekday: typeof scheduleConfig?.weekday === 'number' ? scheduleConfig.weekday : undefined,
+  };
+}
+
+function buildScheduleTime(schedule: Task['schedule'] | undefined) {
+  if (!schedule) {
+    return '';
+  }
+  if (schedule === 'manual') {
+    return '仅手动执行';
+  }
+  return '仅手动执行';
+}
+
+function buildDraftAssistantReply(result: TaskDraftResolveResult) {
+  const sections: string[] = [];
+
+  if (result.summary.length > 0) {
+    sections.push(`已更新草稿：${result.summary.join('，')}。`);
+  }
+  if (result.missing.length > 0) {
+    sections.push(`还需要补充：${result.missing.join('、')}。`);
+  }
+  if (result.warnings.length > 0) {
+    sections.push(result.warnings.join(' '));
+  }
+
+  return sections.join('\n\n') || '这条描述还不足以更新任务草稿，请继续补充文件、频率或分析目标。';
+}
+
+function createDraftTaskId() {
+  return `task_${Date.now()}`;
+}
 
 function getScheduleLabel(schedule: Task['schedule']) {
+  if (schedule === 'hourly') {
+    return '手动';
+  }
   if (schedule === 'daily') {
-    return '每天';
+    return '手动';
   }
   if (schedule === 'weekly') {
-    return '每周';
+    return '手动';
   }
-  return '单次';
+  return '手动';
 }
 
 function getTaskStatusMeta(status: Task['status']) {
@@ -133,150 +181,6 @@ function toExcerpt(markdown: string) {
   return markdown.replace(/[#>*`-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 110);
 }
 
-function extractTimeText(text: string) {
-  const match = text.match(
-    /(凌晨\s*\d{1,2}(?::\d{2})?|早上\s*\d{1,2}(?::\d{2})?|上午\s*\d{1,2}(?::\d{2})?|中午\s*\d{1,2}(?::\d{2})?|下午\s*\d{1,2}(?::\d{2})?|晚上\s*\d{1,2}(?::\d{2})?|\d{1,2}:\d{2}|\d{1,2}点(?:\d{1,2}分)?)/,
-  );
-
-  if (!match) {
-    return undefined;
-  }
-
-  return match[1].replace(/\s+/g, '');
-}
-
-function inferTaskName(goal?: string, filePath?: string) {
-  if (goal) {
-    const normalizedGoal = goal
-      .replace(/^输出/, '')
-      .replace(/^(一个|一份)/, '')
-      .replace(/[。！!]$/g, '')
-      .trim();
-
-    if (normalizedGoal) {
-      return normalizedGoal.endsWith('任务') ? normalizedGoal : `${normalizedGoal}任务`;
-    }
-  }
-
-  if (filePath) {
-    const base = getFileName(filePath).replace(/\.(csv|xlsx)$/i, '');
-    return `${base} 分析任务`;
-  }
-
-  return undefined;
-}
-
-function parseTaskMessage(input: string, currentValues: Partial<TaskFormValues>): DraftParseResult {
-  const updates: Partial<TaskFormValues> = {
-    outputFormat: 'markdown',
-  };
-  const summary: string[] = [];
-  const missing: string[] = [];
-  const warnings: string[] = [];
-  const text = input.trim();
-
-  const fileMatch = text.match(/([A-Za-z0-9_./-]+\.(?:csv|xlsx))/i);
-  if (fileMatch) {
-    updates.inputFilePath = fileMatch[1];
-    summary.push(`文件 ${fileMatch[1]}`);
-  }
-
-  if (/每周|weekly|周[一二三四五六日天]/i.test(text)) {
-    updates.schedule = 'weekly';
-    const weekday = text.match(/周[一二三四五六日天]/)?.[0];
-    const timeText = extractTimeText(text);
-    updates.scheduleTime = [weekday, timeText].filter(Boolean).join(' ') || '周一 09:00';
-    summary.push(`每周执行 ${updates.scheduleTime}`);
-  } else if (/每天|daily|每日/i.test(text)) {
-    updates.schedule = 'daily';
-    updates.scheduleTime = extractTimeText(text) || currentValues.scheduleTime || '09:00';
-    summary.push(`每天执行 ${updates.scheduleTime}`);
-  } else if (/现在|立即|马上|单次|once/i.test(text)) {
-    updates.schedule = 'once';
-    updates.scheduleTime = '立即执行';
-    summary.push('单次执行');
-  }
-
-  const goalFromOutput = text.match(/(?:输出|生成)([^，。；;]+(?:报告|摘要|说明|结论|清单)?)/);
-  const goalFromAnalyze = text.match(/分析(?:\s|)([^，。；;]+?)(?:，|,|并|然后|输出|生成|$)/);
-  const rawGoal = goalFromOutput?.[1] || goalFromAnalyze?.[1];
-  if (rawGoal) {
-    const analysisGoal = rawGoal.replace(fileMatch?.[1] || '', '').trim();
-    if (analysisGoal) {
-      updates.analysisGoal = analysisGoal;
-      summary.push(`目标 ${analysisGoal}`);
-    }
-  }
-
-  const mergedGoal = updates.analysisGoal ?? currentValues.analysisGoal;
-  const mergedFilePath = updates.inputFilePath ?? currentValues.inputFilePath;
-  const generatedName = inferTaskName(mergedGoal, mergedFilePath);
-  if (generatedName && (!currentValues.name || updates.analysisGoal || updates.inputFilePath)) {
-    updates.name = generatedName;
-    summary.push(`名称 ${generatedName}`);
-  }
-
-  if (!mergedFilePath) {
-    missing.push('输入文件路径');
-  }
-  if (!mergedGoal) {
-    missing.push('分析目标');
-  }
-  if (!updates.schedule && !currentValues.schedule) {
-    missing.push('执行方式');
-  }
-
-  if (mergedFilePath && !/\.(csv|xlsx)$/i.test(mergedFilePath)) {
-    warnings.push('首版仅支持 CSV / XLSX 文件，请调整输入路径。');
-  }
-
-  return { updates, summary, missing, warnings };
-}
-
-function buildAssistantReply(result: DraftParseResult) {
-  const parts: string[] = [];
-
-  if (result.summary.length > 0) {
-    parts.push(`我已经更新草稿：${result.summary.join('，')}。`);
-  }
-
-  if (result.missing.length > 0) {
-    parts.push(`还需要补充：${result.missing.join('、')}。`);
-  }
-
-  if (result.warnings.length > 0) {
-    parts.push(result.warnings.join(' '));
-  }
-
-  if (parts.length === 0) {
-    return '这条描述里还没有足够的结构化信息。请直接说明文件路径、执行频率和希望输出的结果。';
-  }
-
-  return parts.join(' ');
-}
-
-function shortenText(value: string, maxLength = 180) {
-  if (value.length <= maxLength) {
-    return value;
-  }
-
-  return `${value.slice(0, maxLength)}...`;
-}
-
-function summarizeProcessPayload(value: unknown) {
-  if (typeof value === 'string') {
-    return shortenText(value);
-  }
-
-  if (value && typeof value === 'object') {
-    const maybeOutput =
-      'output' in value && typeof value.output === 'string' ? value.output : JSON.stringify(value);
-    return shortenText(maybeOutput);
-  }
-
-  return '处理中...';
-}
-
 export default function Dashboard() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -286,12 +190,20 @@ export default function Dashboard() {
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>();
+  const [connectionIssue, setConnectionIssue] = useState<string | null>(null);
   const [chatSessionId, setChatSessionId] = useState(() => `task_editor_${Date.now()}`);
+  const [editorTaskId, setEditorTaskId] = useState(() => createDraftTaskId());
+  const [editorWorkspaceDir, setEditorWorkspaceDir] = useState('');
+  const [editorUploadedFiles, setEditorUploadedFiles] = useState<TaskFile[]>([]);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [isResolvingDraft, setIsResolvingDraft] = useState(false);
+  const [isSavingTask, setIsSavingTask] = useState(false);
   const [modalChatInput, setModalChatInput] = useState('');
   const [modalChatMessages, setModalChatMessages] = useState<ModalChatMessage[]>([
     { id: 'assistant-init', role: 'assistant', content: initialAssistantMessage, kind: 'text' },
   ]);
   const chatLogRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [form] = Form.useForm<TaskFormValues>();
   const formValues = Form.useWatch([], form) as Partial<TaskFormValues> | undefined;
 
@@ -316,6 +228,7 @@ export default function Dashboard() {
     try {
       const result = await tasksAPI.getList();
       if (result.success && result.data) {
+        setConnectionIssue(null);
         const nextTasks = result.data as Task[];
         setTasks(nextTasks);
         if (nextTasks.length === 0) {
@@ -326,9 +239,11 @@ export default function Dashboard() {
           setSelectedTaskId(nextTasks[0].id);
         }
       } else {
+        setConnectionIssue(result.errorMessage || '任务接口不可用，请先启动后端服务');
         message.error(result.errorMessage || '获取任务列表失败');
       }
     } catch {
+      setConnectionIssue('任务接口不可用，请先启动后端服务');
       message.error('获取任务列表失败');
     }
   };
@@ -412,12 +327,19 @@ export default function Dashboard() {
   const draftValues = formValues || {};
 
   const openCreateModal = () => {
+    const nextDraftTaskId = createDraftTaskId();
     setEditingTask(null);
     setChatSessionId(`task_editor_${Date.now()}`);
+    setEditorTaskId(nextDraftTaskId);
+    setEditorWorkspaceDir('');
+    setEditorUploadedFiles([]);
     form.resetFields();
     form.setFieldsValue({
-      schedule: 'once',
-      scheduleTime: '立即执行',
+      name: '',
+      inputFilePath: '',
+      schedule: 'manual',
+      scheduleConfig: createEmptyScheduleConfig(),
+      analysisGoal: '',
       status: 'active',
       outputFormat: 'markdown',
     });
@@ -435,11 +357,14 @@ export default function Dashboard() {
 
     setEditingTask(selectedTask);
     setChatSessionId(`task_editor_${selectedTask.id}_${Date.now()}`);
+    setEditorTaskId(selectedTask.id);
+    setEditorWorkspaceDir(selectedTask.workspaceDir);
+    setEditorUploadedFiles(selectedTask.uploadedFiles || []);
     form.setFieldsValue({
       name: selectedTask.name,
       inputFilePath: selectedTask.inputFilePath,
-      schedule: selectedTask.schedule,
-      scheduleTime: selectedTask.scheduleTime,
+      schedule: 'manual',
+      scheduleConfig: createEmptyScheduleConfig(),
       analysisGoal: selectedTask.analysisGoal,
       status: selectedTask.status,
       outputFormat: selectedTask.outputFormat,
@@ -460,13 +385,127 @@ export default function Dashboard() {
     setTaskModalVisible(false);
   };
 
+  const applyDraftResultToForm = (result: TaskDraftResolveResult) => {
+    form.setFieldsValue({
+      name: result.name,
+      inputFilePath: form.getFieldValue('inputFilePath'),
+      schedule: 'manual',
+      scheduleConfig: createEmptyScheduleConfig(),
+      analysisGoal: result.analysisGoal,
+      status: form.getFieldValue('status') || 'active',
+      outputFormat: 'markdown',
+    });
+  };
+
+  const handleUploadButtonClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelect = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+
+    if (!file) {
+      return;
+    }
+
+    if (!/\.(csv|xlsx)$/i.test(file.name)) {
+      message.error('当前仅支持上传 CSV 或 XLSX 文件');
+      return;
+    }
+
+    try {
+      setIsUploadingFile(true);
+      const result = await tasksAPI.uploadFile(editorTaskId, file);
+      if (!result.success || !result.data) {
+        throw new Error(result.errorMessage || '文件上传失败');
+      }
+      const uploadData = result.data;
+
+      setEditorWorkspaceDir(uploadData.workspaceDir);
+      setEditorUploadedFiles(prev => {
+        const nextFiles = prev.filter(item => item.path !== uploadData.file.path);
+        nextFiles.unshift(uploadData.file);
+        return nextFiles;
+      });
+      form.setFieldValue('inputFilePath', uploadData.inputFilePath);
+      setModalChatMessages(prev => [
+        ...prev,
+        {
+          id: `assistant-upload-${Date.now()}`,
+          role: 'assistant',
+          content: `已上传 ${file.name}，并设为当前输入文件。继续描述任务目标、执行频率或时间即可。`,
+          kind: 'text',
+        },
+      ]);
+      message.success(`已上传 ${file.name}`);
+    } catch (error) {
+      message.error((error as Error).message || '文件上传失败');
+    } finally {
+      setIsUploadingFile(false);
+    }
+  };
+
+  const handleUseUploadedFile = (file: TaskFile) => {
+    form.setFieldValue('inputFilePath', file.path);
+    setModalChatMessages(prev => [
+      ...prev,
+      {
+        id: `assistant-file-${Date.now()}`,
+        role: 'assistant',
+        content: `已切换到文件 ${file.name}。`,
+        kind: 'text',
+      },
+    ]);
+  };
+
+  const handleRemoveUploadedFile = (filePath: string) => {
+    setEditorUploadedFiles(prev => {
+      const nextFiles = prev.filter(item => item.path !== filePath);
+      if (form.getFieldValue('inputFilePath') === filePath) {
+        form.setFieldValue('inputFilePath', nextFiles[0]?.path || '');
+      }
+      return nextFiles;
+    });
+  };
+
   const handleSubmitTask = async () => {
     try {
+      setIsSavingTask(true);
       const values = await form.validateFields();
+      const draftMessages = modalChatMessages
+        .filter(messageItem => messageItem.role === 'user' || messageItem.role === 'assistant')
+        .map(messageItem => ({
+          role: messageItem.role as 'user' | 'assistant',
+          content: messageItem.content,
+        }));
+      const draftResolution = await tasksAPI.resolveDraft({
+        messages: draftMessages,
+        draft: {
+          name: values.name,
+          inputFilePath: values.inputFilePath,
+          schedule: values.schedule,
+          scheduleConfig: toApiScheduleConfig(values.scheduleConfig),
+          scheduleTime: buildScheduleTime(values.schedule),
+          analysisGoal: values.analysisGoal,
+        },
+      });
+      const finalAnalysisGoal =
+        draftResolution.success && draftResolution.data?.analysisGoal
+          ? draftResolution.data.analysisGoal
+          : values.analysisGoal;
+
       const payload: Partial<Task> = {
-        ...values,
-        outputFormat: 'markdown',
+        name: values.name,
+        inputFilePath: values.inputFilePath,
+        schedule: 'manual',
+        scheduleConfig: {},
+        scheduleTime: buildScheduleTime('manual'),
+        analysisGoal: finalAnalysisGoal,
         status: values.status || 'active',
+        outputFormat: 'markdown',
+        uploadedFiles: editorUploadedFiles,
+        workspaceDir: editingTask ? editorWorkspaceDir || editingTask.workspaceDir : editorWorkspaceDir || undefined,
       };
 
       if (editingTask) {
@@ -475,18 +514,23 @@ export default function Dashboard() {
           throw new Error(result.errorMessage || '任务更新失败');
         }
         message.success('任务已更新');
+        setSelectedTaskId(editingTask.id);
       } else {
+        payload.id = editorTaskId;
         const result = await tasksAPI.create(payload);
-        if (!result.success) {
+        if (!result.success || !result.data) {
           throw new Error(result.errorMessage || '任务创建失败');
         }
         message.success('任务已创建');
+        setSelectedTaskId(result.data.id);
       }
 
       closeTaskModal();
-      await fetchTasks();
+      await Promise.all([fetchTasks(), fetchRuns(), fetchReports()]);
     } catch (error) {
       message.error((error as Error).message || '请先补全任务配置');
+    } finally {
+      setIsSavingTask(false);
     }
   };
 
@@ -551,6 +595,96 @@ export default function Dashboard() {
     });
   };
 
+  const resolveDraftFromPrompt = async (content: string) => {
+    const currentValues = form.getFieldsValue(true) as Partial<TaskFormValues>;
+    const draftMessages = [...modalChatMessages, { id: `draft-user-${Date.now()}`, role: 'user' as const, content }]
+      .filter(messageItem => messageItem.role === 'user' || messageItem.role === 'assistant')
+      .map(messageItem => ({
+        role: messageItem.role as 'user' | 'assistant',
+        content: messageItem.content,
+      }));
+
+    const result = await tasksAPI.resolveDraft({
+      messages: draftMessages,
+      draft: {
+          name: currentValues.name,
+          inputFilePath: currentValues.inputFilePath,
+          schedule: 'manual',
+          scheduleConfig: {},
+          scheduleTime: buildScheduleTime('manual'),
+          analysisGoal: currentValues.analysisGoal,
+      },
+    });
+
+    if (!result.success || !result.data) {
+      throw new Error(result.errorMessage || '任务草稿解析失败');
+    }
+
+    applyDraftResultToForm(result.data);
+    return result.data;
+  };
+
+  const streamChatReply = async (assistantMessageId: string, content: string) => {
+    setAssistantContent(assistantMessageId, '正在连接对话...', 'status', '处理中');
+    const response = await fetch('/api/web/chat/stream', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-API-Key': chatApiKey,
+      },
+      body: JSON.stringify({
+        sessionId: chatSessionId,
+        messages: [{ role: 'user', content }],
+        useTools: true,
+        workspaceDir: editorWorkspaceDir || undefined,
+      }),
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error(`聊天服务不可用 (${response.status})`);
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulatedText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+
+      for (const rawLine of lines) {
+        const line = rawLine.trim();
+        if (!line.startsWith('data:')) {
+          continue;
+        }
+
+        const payload = line.slice(5).trim();
+        if (!payload || payload === '[DONE]') {
+          continue;
+        }
+
+        const event = JSON.parse(payload) as { type: string; text?: string; finishReason?: string };
+        if (event.type === 'text-delta') {
+          accumulatedText += event.text || '';
+          setAssistantContent(assistantMessageId, accumulatedText, 'text', '回复');
+        } else if (event.type === 'reasoning-start') {
+          setAssistantContent(assistantMessageId, '正在思考任务方案...', 'status', '处理中');
+        } else if (event.type === 'finish' && event.finishReason === 'stop' && accumulatedText) {
+          setAssistantContent(assistantMessageId, accumulatedText, 'text', '回复');
+        }
+      }
+    }
+
+    return accumulatedText.trim();
+  };
+
   const submitPrompt = async (prompt: string) => {
     const content = prompt.trim();
     if (!content) {
@@ -571,209 +705,43 @@ export default function Dashboard() {
       },
     ]);
     setModalChatInput('');
-
-    const currentValues = form.getFieldsValue(true) as Partial<TaskFormValues>;
-    const parsed = parseTaskMessage(content, currentValues);
-
-    if (Object.keys(parsed.updates).length > 0) {
-      form.setFieldsValue(parsed.updates);
-    }
-
-    const localDraftSummary = buildAssistantReply(parsed);
-    let accumulatedText = '';
-    let streamCompleted = false;
-
     try {
-      setAssistantContent(assistantMessageId, '正在连接流式接口...', 'status', '处理中');
-      const response = await fetch('/api/web/chat/stream', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-API-Key': chatApiKey,
-        },
-        body: JSON.stringify({
-          sessionId: chatSessionId,
-          messages: [{ role: 'user', content }],
-          useTools: true,
-        }),
-      });
+      setIsResolvingDraft(true);
+      setAssistantContent(assistantMessageId, '正在解析任务并发起对话...', 'status', '处理中');
+      const [draftResult, streamResult] = await Promise.allSettled([
+        resolveDraftFromPrompt(content),
+        streamChatReply(assistantMessageId, content),
+      ]);
 
-      if (!response.ok || !response.body) {
-        throw new Error(`chat stream request failed: ${response.status}`);
-      }
-      setAssistantContent(assistantMessageId, '流式连接已建立，等待模型返回...', 'status', '处理中');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) {
-          break;
-        }
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (const rawLine of lines) {
-          const line = rawLine.trim();
-          if (!line.startsWith('data:')) {
-            continue;
-          }
-
-          const payload = line.slice(5).trim();
-          if (!payload || payload === '[DONE]') {
-            continue;
-          }
-
-          const event = JSON.parse(payload) as {
-            type: string;
-            text?: string;
-            toolName?: string;
-            delta?: string;
-            output?: unknown;
-            finishReason?: string;
-          };
-
-          switch (event.type) {
-            case 'start':
-              setAssistantContent(assistantMessageId, '开始处理这条请求...', 'status', '处理中');
-              break;
-            case 'start-step':
-              setAssistantContent(assistantMessageId, '进入新的处理步骤...', 'status', '处理中');
-              break;
-            case 'reasoning-start':
-              setAssistantContent(assistantMessageId, '模型开始推理...', 'reasoning', '推理');
-              break;
-            case 'reasoning-delta':
-              setAssistantContent(
-                assistantMessageId,
-                event.text || '模型正在推理...',
-                'reasoning',
-                '推理',
-              );
-              break;
-            case 'reasoning-end':
-              setAssistantContent(
-                assistantMessageId,
-                '推理完成，准备生成回复...',
-                'reasoning',
-                '推理',
-              );
-              break;
-            case 'tool-input-start':
-              setAssistantContent(
-                assistantMessageId,
-                `调用工具 ${event.toolName || ''}...`,
-                'tool',
-                '工具调用',
-              );
-              break;
-            case 'tool-input-delta':
-              setAssistantContent(
-                assistantMessageId,
-                `工具参数：${shortenText(event.delta || '正在传递工具参数。')}`,
-                'tool',
-                '工具调用',
-              );
-              break;
-            case 'tool-input-end':
-              setAssistantContent(
-                assistantMessageId,
-                `工具 ${event.toolName || ''} 参数准备完成。`,
-                'tool',
-                '工具调用',
-              );
-              break;
-            case 'tool-call':
-              setAssistantContent(
-                assistantMessageId,
-                `工具 ${event.toolName || ''} 开始执行。`,
-                'tool',
-                '工具调用',
-              );
-              break;
-            case 'tool-result':
-              setAssistantContent(
-                assistantMessageId,
-                `工具 ${event.toolName || ''} 已返回：${summarizeProcessPayload(event.output)}`,
-                'tool',
-                '工具调用',
-              );
-              break;
-            case 'text-start':
-              setAssistantContent(
-                assistantMessageId,
-                accumulatedText || '正在生成回复...',
-                accumulatedText ? 'text' : 'status',
-                accumulatedText ? '回复' : '生成回复',
-              );
-              break;
-            case 'text-delta':
-              accumulatedText += event.text || '';
-              setAssistantContent(assistantMessageId, accumulatedText, 'text', '回复');
-              break;
-            case 'text-end':
-              setAssistantContent(
-                assistantMessageId,
-                accumulatedText || '当前段落输出完成，等待下一步...',
-                accumulatedText ? 'text' : 'status',
-                accumulatedText ? '回复' : '处理中',
-              );
-              break;
-            case 'finish-step':
-              setAssistantContent(
-                assistantMessageId,
-                event.finishReason === 'tool-calls'
-                  ? '当前轮次结束，继续处理工具结果...'
-                  : '当前步骤已完成，等待后续处理...',
-                'status',
-                '处理中',
-              );
-              break;
-            case 'finish':
-              if (event.finishReason === 'stop') {
-                streamCompleted = true;
-                setAssistantContent(
-                  assistantMessageId,
-                  accumulatedText || localDraftSummary,
-                  'text',
-                  '回复',
-                );
-              } else {
-                setAssistantContent(
-                  assistantMessageId,
-                  event.finishReason === 'tool-calls'
-                    ? '收到工具继续信号，等待下一轮处理...'
-                    : `当前未完成，finishReason: ${event.finishReason || 'unknown'}`,
-                  'status',
-                  '处理中',
-                );
-              }
-              break;
-            default:
-              break;
-          }
-        }
+      if (streamResult.status === 'fulfilled' && streamResult.value) {
+        setAssistantContent(assistantMessageId, streamResult.value, 'text', '回复');
+        return;
       }
 
-      if (!streamCompleted) {
+      if (draftResult.status === 'fulfilled') {
         setAssistantContent(
           assistantMessageId,
-          accumulatedText || '流已结束，但未收到 finish: stop，当前回复仍视为未完成。',
-          accumulatedText ? 'text' : 'status',
-          accumulatedText ? '回复' : '处理中',
+          `${buildDraftAssistantReply(draftResult.value)}\n\n聊天服务当前不可用，已先更新右侧任务草稿。`,
+          'text',
+          '回复',
         );
+        return;
       }
-    } catch {
+
+      throw new Error(
+        streamResult.status === 'rejected'
+          ? (streamResult.reason as Error).message || '聊天服务不可用'
+          : (draftResult.reason as Error).message || '任务草稿解析失败',
+      );
+    } catch (error) {
       setAssistantContent(
         assistantMessageId,
-        `${localDraftSummary} 当前未能连通流式接口，已先按本地规则更新任务草稿。`,
+        (error as Error).message || '任务草稿解析失败，请继续补充信息。',
         'text',
         '回复',
       );
+    } finally {
+      setIsResolvingDraft(false);
     }
   };
 
@@ -791,6 +759,14 @@ export default function Dashboard() {
               新建分析任务
             </Button>
           </div>
+
+          {connectionIssue ? (
+            <Card className="task-alert-inline-card">
+              <strong>后端未连接</strong>
+              <p>{connectionIssue}</p>
+              <span>需要先启动根目录服务：`npm run dev`</span>
+            </Card>
+          ) : null}
 
           <div className="sidebar-metrics">
             <div className="metric-chip">
@@ -1031,10 +1007,10 @@ export default function Dashboard() {
         width={1120}
         className="task-editor-modal"
         footer={[
-          <Button key="cancel" onClick={closeTaskModal}>
+          <Button key="cancel" onClick={closeTaskModal} disabled={isSavingTask}>
             取消
           </Button>,
-          <Button key="submit" type="primary" onClick={handleSubmitTask}>
+          <Button key="submit" type="primary" onClick={handleSubmitTask} loading={isSavingTask}>
             保存任务
           </Button>,
         ]}
@@ -1051,7 +1027,7 @@ export default function Dashboard() {
 
             <div className="editor-suggestions">
               {quickPrompts.map(prompt => (
-                <button key={prompt} type="button" onClick={() => submitPrompt(prompt)}>
+                <button key={prompt} type="button" onClick={() => submitPrompt(prompt)} disabled={isResolvingDraft}>
                   {prompt}
                 </button>
               ))}
@@ -1084,14 +1060,61 @@ export default function Dashboard() {
               ))}
             </div>
 
+            {editorUploadedFiles.length > 0 ? (
+              <div className="editor-upload-strip">
+                <span className="editor-upload-label">当前文件</span>
+                <div className="uploaded-file-list compact">
+                  {editorUploadedFiles.map(file => (
+                    <div
+                      key={file.path}
+                      className={`uploaded-file-item compact ${draftValues.inputFilePath === file.path ? 'active' : ''}`}
+                    >
+                      <div className="uploaded-file-item-main">
+                        <strong>{file.name}</strong>
+                        <span>{file.path}</span>
+                      </div>
+                      <div className="uploaded-file-item-actions">
+                        {draftValues.inputFilePath !== file.path ? (
+                          <Button size="small" onClick={() => handleUseUploadedFile(file)}>
+                            使用
+                          </Button>
+                        ) : (
+                          <Tag color="success">当前输入</Tag>
+                        )}
+                        <Button size="small" type="text" onClick={() => handleRemoveUploadedFile(file.path)}>
+                          移除
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="editor-upload-empty">
+                <span>点击左下角上传按钮，先放入一个 CSV / XLSX 文件。</span>
+              </div>
+            )}
+
             <div className="editor-input-row">
+              <Button
+                icon={<UploadOutlined />}
+                onClick={handleUploadButtonClick}
+                loading={isUploadingFile}
+                className="editor-icon-button"
+              />
               <Input
                 value={modalChatInput}
                 onChange={event => setModalChatInput(event.target.value)}
                 onPressEnter={() => submitPrompt(modalChatInput)}
-                placeholder="例如：每周三下午 2 点分析 complaints.csv，输出投诉归因摘要"
+                placeholder="描述任务文件、执行频率和想要的结果"
+                disabled={isResolvingDraft}
               />
-              <Button type="primary" icon={<SendOutlined />} onClick={() => submitPrompt(modalChatInput)} />
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={() => submitPrompt(modalChatInput)}
+                loading={isResolvingDraft}
+              />
             </div>
           </section>
 
@@ -1104,44 +1127,29 @@ export default function Dashboard() {
               <span className="editor-tip">CSV / XLSX in, Markdown out</span>
             </div>
 
-            <div className="draft-preview-card">
-              <div className="draft-preview-row">
-                <span>任务名称</span>
-                <strong>{draftValues.name || '等待聊天生成名称'}</strong>
-              </div>
-              <div className="draft-preview-row">
-                <span>输入文件</span>
-                <strong>{draftValues.inputFilePath || '请补充 CSV / XLSX 文件路径'}</strong>
-              </div>
-              <div className="draft-preview-row">
-                <span>执行方式</span>
-                <strong>
-                  {draftValues.schedule ? getScheduleLabel(draftValues.schedule) : '待确认'}
-                  {draftValues.scheduleTime ? ` / ${draftValues.scheduleTime}` : ''}
-                </strong>
-              </div>
-              <div className="draft-preview-row">
-                <span>分析目标</span>
-                <strong>{draftValues.analysisGoal || '等待补充输出目标'}</strong>
-              </div>
-              <div className="draft-preview-row">
-                <span>输出格式</span>
-                <strong>{(draftValues.outputFormat || 'markdown').toUpperCase()}</strong>
-              </div>
-            </div>
-
             <Form form={form} layout="vertical" className="task-form">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv,.xlsx"
+                hidden
+                aria-hidden="true"
+                tabIndex={-1}
+                className="hidden-file-input"
+                onChange={handleFileSelect}
+              />
+
               <Form.Item
                 name="name"
                 label="任务名称"
                 rules={[{ required: true, message: '请输入任务名称' }]}
               >
-                <Input placeholder="例如：销售周报摘要任务" />
+                <Input placeholder="AI 会先自动生成，你也可以手动修改" />
               </Form.Item>
 
               <Form.Item
                 name="inputFilePath"
-                label="输入文件路径"
+                hidden
                 rules={[
                   { required: true, message: '请输入 CSV / XLSX 文件路径' },
                   {
@@ -1150,37 +1158,46 @@ export default function Dashboard() {
                   },
                 ]}
               >
-                <Input placeholder="/workspace/reports/sales-weekly.xlsx" />
+                <Input />
               </Form.Item>
 
-              <div className="form-grid">
+              <div className="upload-selected-card">
+                <div className="upload-selected-header">
+                  <UploadOutlined />
+                  <span className="summary-label">文件上传</span>
+                </div>
+                <strong>{draftValues.inputFilePath || '请在左侧输入区点击上传图标，添加 CSV / XLSX 文件'}</strong>
+                <p>文件会被保存到当前任务工作目录，后续 agent 运行也会使用同一个工作空间。</p>
+                {editorWorkspaceDir ? <p className="upload-workspace-hint">工作目录：{editorWorkspaceDir}</p> : null}
+              </div>
+
+              <div className="schedule-row">
                 <Form.Item
                   name="schedule"
                   label="执行方式"
                   rules={[{ required: true, message: '请选择执行方式' }]}
+                  className="schedule-row-main"
                 >
                   <Select
                     options={[
-                      { value: 'once', label: '单次' },
-                      { value: 'daily', label: '每天' },
-                      { value: 'weekly', label: '每周' },
+                      { value: 'manual', label: '手动执行' },
                     ]}
                   />
                 </Form.Item>
 
-                <Form.Item name="scheduleTime" label="时间说明">
-                  <Input placeholder="例如：周一 09:00 / 18:00 / 立即执行" />
-                </Form.Item>
+                <div className="schedule-row-config">
+                  <div className="schedule-row-empty" />
+                </div>
               </div>
 
               <Form.Item
                 name="analysisGoal"
-                label="分析目标"
+                label="任务目标"
                 rules={[{ required: true, message: '请描述希望输出的分析结果' }]}
               >
                 <Input.TextArea
                   rows={4}
-                  placeholder="例如：输出销售摘要、异常门店和需要复盘的区域"
+                  placeholder="保存时会自动整理成可执行的分析目标文本"
                 />
               </Form.Item>
 

@@ -1,6 +1,6 @@
 import { ConfigProvider } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import Dashboard from './pages/dashboard';
+import Dashboard from './pages/dashboard/index.tsx';
 import './App.css';
 
 function App() {

@@ -6,19 +6,72 @@ import type {
   Response,
   Run,
   Task,
+  TaskDraftResolveRequest,
+  TaskDraftResolveResult,
+  TaskFileUploadResult,
   Tool,
 } from './types';
 
-const API_BASE = '/api';
+export function getApiBase() {
+  return window.__MINIOPENCODE_DESKTOP__?.apiBase || '/api';
+}
+
+const API_BASE = getApiBase();
+
+async function parseApiResponse<T>(response: globalThis.Response): Promise<Response<T>> {
+  const raw = await response.text();
+  const contentType = response.headers.get('content-type') || '';
+
+  if (!raw.trim()) {
+    if (response.ok) {
+      return { success: true } as Response<T>;
+    }
+
+    return {
+      success: false,
+      errorMessage: `请求失败 (${response.status})，后端可能未启动或代理不可用`,
+    };
+  }
+
+  if (contentType.includes('application/json')) {
+    try {
+      return JSON.parse(raw) as Response<T>;
+    } catch {
+      return {
+        success: false,
+        errorMessage: `接口返回了无效 JSON (${response.status})`,
+      };
+    }
+  }
+
+  if (!response.ok) {
+    return {
+      success: false,
+      errorMessage: raw.trim() || `请求失败 (${response.status})`,
+    };
+  }
+
+  return {
+    success: false,
+    errorMessage: '接口返回了非 JSON 响应',
+  };
+}
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<Response<T>> {
-  const response = await fetch(`${API_BASE}${url}`, {
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    ...options,
-  });
-  return (await response.json()) as Response<T>;
+  try {
+    const response = await fetch(`${API_BASE}${url}`, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      ...options,
+    });
+    return parseApiResponse<T>(response);
+  } catch (error) {
+    return {
+      success: false,
+      errorMessage: (error as Error).message || '网络请求失败',
+    };
+  }
 }
 
 export const toolsAPI = {
@@ -46,6 +99,26 @@ export const tasksAPI = {
   disable: (id: string) => fetchJSON<Task>(`/tasks/${id}/disable`, { method: 'POST' }),
   getRuns: (taskId: string) => fetchJSON<Run[]>(`/tasks/${taskId}/runs`),
   getReports: (taskId: string) => fetchJSON<Report[]>(`/tasks/${taskId}/reports`),
+  resolveDraft: (data: TaskDraftResolveRequest) =>
+    fetchJSON<TaskDraftResolveResult>('/tasks/draft/resolve', { method: 'POST', body: JSON.stringify(data) }),
+  uploadFile: async (taskId: string, file: File): Promise<Response<TaskFileUploadResult>> => {
+    try {
+      const response = await fetch(`${API_BASE}/tasks/${taskId}/files`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': file.type || 'application/octet-stream',
+          'X-File-Name': encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      return parseApiResponse<TaskFileUploadResult>(response);
+    } catch (error) {
+      return {
+        success: false,
+        errorMessage: (error as Error).message || '文件上传失败',
+      };
+    }
+  }
 };
 
 export const runsAPI = {

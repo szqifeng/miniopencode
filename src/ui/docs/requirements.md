@@ -76,13 +76,14 @@
 - 时间信息
 - 希望输出的分析结果
 
-当前实现会从输入里提取：
+当前实现通过 `/api/tasks/draft/resolve` 解析并更新：
 
 - 文件路径，例如 `sales-weekly.xlsx`
-- 调度方式，`once / daily / weekly`
-- 时间说明，例如 `18:00`、`周一 09:00`
+- 调度方式，`manual / hourly / daily / weekly`
+- 调度配置，例如 `minute`、`time`、`weekday`
+- 时间说明，例如 `每小时 15 分`、`18:00`、`周一 09:00`
 - 分析目标
-- 推断任务名
+- 建议任务名
 
 如果信息不完整，聊天区会提示还缺哪些字段。
 
@@ -91,7 +92,7 @@
 右侧始终显示当前任务草稿，包含：
 
 - 任务名称
-- 输入文件路径
+- 当前输入文件
 - 执行方式
 - 时间说明
 - 分析目标
@@ -99,6 +100,29 @@
 - 当前状态
 
 输出格式固定为 `markdown`，不可编辑。
+
+当前 UI 只支持手动执行。
+
+### 3.4 文件上传
+
+任务弹层内支持直接上传输入文件：
+
+- 仅允许 `CSV / XLSX`
+- 上传按钮位于聊天发送按钮旁边
+- 上传接口为 `/api/tasks/:id/files`
+- 前端会在打开弹层时先生成任务 ID，用于提前建立工作目录
+- 上传成功后自动回填 `inputFilePath`
+- 已上传文件列表会保留在草稿里，并在提交任务时写入 `uploadedFiles`
+- 页面不展示原始文件路径输入控件，主流程以上传为准
+
+### 3.5 保存时的分析目标抽象
+
+保存任务前，前端会再次调用 `/api/tasks/draft/resolve`：
+
+- 使用当前聊天记录
+- 使用当前任务草稿
+- 保留用户手工修改过的任务名称
+- 将最终落库的 `analysisGoal` 收敛为具体、可执行的分析目标文本
 
 ---
 
@@ -111,9 +135,16 @@ type Task = {
   id: string
   name: string
   inputFilePath: string
-  schedule: "once" | "daily" | "weekly"
+  workspaceDir: string
+  uploadedFiles: TaskFile[]
+  schedule: "manual" | "hourly" | "daily" | "weekly"
+  scheduleConfig?: {
+    minute?: number
+    time?: string
+    weekday?: number
+  }
   scheduleTime?: string
-  status: "active" | "paused" | "error"
+  status: "active" | "completed" | "paused" | "error"
   analysisGoal?: string
   outputFormat: "markdown"
   lastRunAt?: string
@@ -153,7 +184,7 @@ type Report = {
 
 ## 5. 当前运行逻辑
 
-当前 UI 使用 `src/mock/index.ts` 中的 mock 数据与 mock API。
+当前主工作台已经按真实后端接口联调，不再依赖 mock 作为主路径。
 
 ### 5.1 手动运行任务
 
@@ -162,7 +193,7 @@ type Report = {
 1. 生成一条新的 `Run`
 2. 生成一条新的 `Report`
 3. 更新任务的 `lastRunAt`
-4. 根据调度方式刷新 `nextRunAt`
+4. 根据调度方式与 `scheduleConfig` 刷新 `nextRunAt`
 
 ### 5.2 任务状态
 
@@ -206,6 +237,13 @@ type Report = {
 
 - `src/services/types.ts`
 - `src/mock/index.ts`
+
+### 7.4 新建任务关键接口
+
+- `src/services/api.ts`
+- `src/app/api.ts`
+- `src/app/taskDraft.ts`
+- `src/app/taskWorkspace.ts`
 
 ---
 

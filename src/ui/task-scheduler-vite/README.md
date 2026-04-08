@@ -8,10 +8,10 @@
 
 ## 功能特性
 
-- **工具管理** - 管理系统中的各类工具（脚本、API、Shell）
-- **任务管理** - 任务的创建、编辑、删除、启动/禁用、立即运行
-- **AI 助手** - 智能对话辅助功能
-- **实时任务状态** - 查看任务执行状态和历史
+- **任务工作台** - 围绕单个任务完成创建、编辑、启停和立即运行
+- **草稿解析** - 通过自然语言调用 `/api/tasks/draft/resolve` 生成结构化任务草稿
+- **文件上传** - 在创建任务弹层里直接上传 `CSV / XLSX` 到任务工作目录
+- **实时任务状态** - 查看任务执行状态、历史运行和 Markdown 报告
 
 ## 技术栈
 
@@ -79,10 +79,12 @@ src/
 |------|------|------|
 | 工具管理 | /api/tools | CRUD 操作 |
 | 任务管理 | /api/tasks | CRUD + 启停控制 + 手动运行 |
+| 任务草稿解析 | /api/tasks/draft/resolve | 把自然语言转换成结构化任务字段 |
+| 任务文件上传 | /api/tasks/:id/files | 上传 CSV / XLSX 到任务工作目录 |
 | 运行记录 | /api/runs | 查询任务运行结果 |
 | 报告管理 | /api/reports | 查询 Markdown 报告 |
 | 知识库 | /api/knowledge | CRUD 操作 |
-| 流式聊天 | /api/web/chat/stream | 任务编辑流式对话 |
+| 流式聊天 | /api/web/chat/stream | 保留的任务编辑流式对话接口 |
 
 详细接口集合见仓库根目录 `postman_collection.json`
 
@@ -116,8 +118,18 @@ export const yourAPI = {
 
 - 前端请求 `/api/*`
 - `vite.config.ts` 会代理到 `http://localhost:3000`
-- 任务编辑聊天使用 `/api/web/chat/stream`
+- 新建 / 编辑任务优先使用 `/api/tasks/draft/resolve`
+- 上传文件使用 `/api/tasks/:id/files`
 - 任务运行会由后端调用 agent 并生成 Markdown 报告
+
+## 当前新建任务流程
+
+1. 打开“新建分析任务”弹层后，前端先生成一个临时 `taskId`
+2. 上传按钮位于聊天输入框右侧；上传时文件会直接写入该任务工作目录，并回填 `inputFilePath`
+3. 左侧自然语言输入会调用 `/api/tasks/draft/resolve` 更新右侧草稿
+4. 当前 UI 只支持 `manual`
+5. 保存前会再次调用草稿解析接口，把最终 `analysisGoal` 抽象为具体分析目标文本
+6. 保存时会提交 `uploadedFiles` 和 `workspaceDir`
 
 ## 后续开发
 
