@@ -1,12 +1,21 @@
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appRoot = path.resolve(__dirname, '..');
 const isDev = Boolean(process.env.VITE_DEV_SERVER_URL);
 
 let backendServer = null;
+
+function reportStartupError(error) {
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  console.error('Desktop startup failed:', error);
+
+  if (app.isReady()) {
+    dialog.showErrorBox('MiniOpenCode 启动失败', message);
+  }
+}
 
 async function startBackend() {
   process.env.MINIOPENCODE_DATA_DIR = path.join(app.getPath('userData'), 'data');
@@ -52,13 +61,28 @@ async function createMainWindow() {
 }
 
 app.whenReady().then(async () => {
-  await createMainWindow();
+  try {
+    await createMainWindow();
+  } catch (error) {
+    reportStartupError(error);
+    app.quit();
+    return;
+  }
 
   app.on('activate', async () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      await createMainWindow();
+      try {
+        await createMainWindow();
+      } catch (error) {
+        reportStartupError(error);
+        app.quit();
+      }
     }
   });
+});
+
+process.on('unhandledRejection', (error) => {
+  reportStartupError(error);
 });
 
 app.on('window-all-closed', () => {
