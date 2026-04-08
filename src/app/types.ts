@@ -1,10 +1,26 @@
+export interface TaskScheduleConfig {
+  minute?: number;
+  time?: string;
+  weekday?: number;
+}
+
+export interface TaskFile {
+  name: string;
+  path: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface Task {
   id: string;
   name: string;
   inputFilePath: string;
-  schedule: 'once' | 'daily' | 'weekly';
+  workspaceDir: string;
+  uploadedFiles: TaskFile[];
+  schedule: 'manual' | 'hourly' | 'daily' | 'weekly';
+  scheduleConfig?: TaskScheduleConfig;
   scheduleTime?: string;
-  status: 'active' | 'paused' | 'error';
+  status: 'active' | 'completed' | 'paused' | 'error';
   analysisGoal?: string;
   outputFormat: 'markdown';
   lastRunAt?: string;

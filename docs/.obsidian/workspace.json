@@ -11,10 +11,14 @@
             "id": "a5038b7b856432ee",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "自然语言创建任务的需求.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "新标签页"
+              "title": "自然语言创建任务的需求"
             }
           }
         ]
@@ -178,6 +182,7 @@
   },
   "active": "a5038b7b856432ee",
   "lastOpenFiles": [
+    "自然语言创建任务的需求.md",
     "项目架构文档.md~",
     "项目架构文档.md",
     "Skill插件系统设计.md",

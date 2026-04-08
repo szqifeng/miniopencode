@@ -12,6 +12,7 @@ import { ChatRequest } from './types.js';
 import type { LLMRes } from './llm.js';
 import { generateTitle } from './llm.js';
 import { getPrompt, getDefaultPrompt } from './prompts.js';
+import { getDataSubdir } from '../utils/paths.js';
 
 const router = express.Router();
 
@@ -24,70 +25,81 @@ function setupSSE(res: Response, sessionId: string) {
 }
 
 router.post('/chat/stream', async (req: Request, res: Response) => {
-  const { sessionId, messages } = req.body as ChatRequest;
+  try {
+    const { sessionId, messages, workspaceDir, system, useTools } = req.body as ChatRequest;
 
-  if (!messages?.length) {
-    res.status(400).json({ error: 'messages is required' });
-    return;
-  }
-
-  const sid = sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
-  const session = await getSession(sid);
-
-  // 将用户消息存储
-  const userMessageParts = messages
-    .filter(m => m.role === 'user')
-    .map((m, i) => createTextPart(`user_${i}`, m.content));
-
-  if (userMessageParts.length > 0) {
-    const userMessage = createMessage('user', userMessageParts);
-    const isFirstMessage = session.messages.length === 0;
-    await addMessage(sid, userMessage, session);
-
-    // 保存 isFirstMessage 标记和用户内容，用于在流结束时生成 title
-    // 只在第一条消息时生成 title，且只使用第一条用户消息的前 100 个字符
-    (res as any)._isFirstMessage = isFirstMessage;
-    if (isFirstMessage) {
-      const firstUserContent = (userMessageParts[0] as { type: 'text'; content: string }).content;
-      (res as any)._userContent = firstUserContent.slice(0, 100);
+    if (!messages?.length) {
+      res.status(400).json({ error: 'messages is required' });
+      return;
     }
-  }
 
-  // 获取完整对话历史
-  const historyMessages = await getMessages(sid, session);
-  const llmMessages = messagesToLLMFormat(historyMessages);
+    const sid = sessionId || `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    const session = await getSession(sid);
 
-  setupSSE(res, sid);
+    const userMessageParts = messages
+      .filter(m => m.role === 'user')
+      .map((m, i) => createTextPart(`user_${i}`, m.content));
 
-  const agent = createAgent();
+    if (userMessageParts.length > 0) {
+      const userMessage = createMessage('user', userMessageParts);
+      const isFirstMessage = session.messages.length === 0;
+      await addMessage(sid, userMessage, session);
 
-  const llmRes: LLMRes = {
-    write: (data: string) => res.write(data),
-    end: () => {
+      (res as any)._isFirstMessage = isFirstMessage;
+      if (isFirstMessage) {
+        const firstUserContent = (userMessageParts[0] as { type: 'text'; content: string }).content;
+        (res as any)._userContent = firstUserContent.slice(0, 100);
+      }
+    }
+
+    const historyMessages = await getMessages(sid, session);
+    const llmMessages = messagesToLLMFormat(historyMessages);
+
+    setupSSE(res, sid);
+
+    const agent = useTools === false ? createAgent({}) : createAgent();
+
+    const llmRes: LLMRes = {
+      write: (data: string) => res.write(data),
+      end: () => {
+        res.end();
+      }
+    };
+
+    const defaultSystem = system || await getDefaultPrompt();
+
+    await agent.runWithStream({
+      messages: llmMessages,
+      system: defaultSystem,
+      res: llmRes,
+      maxLoops: 100,
+      sessionId: sid,
+      workspaceDir,
+      addMessage: async (msg) => {
+        await addMessage(sid, msg, session);
+      }
+    });
+
+    const isFirstMessage = (res as any)._isFirstMessage;
+    const userContent = (res as any)._userContent;
+    if (isFirstMessage && userContent) {
+      const title = userContent.slice(0, 20) || '新会话';
+      await updateSessionTitle(sid, title);
+      console.log(`✓ Title set for session ${sid}: ${title}`);
+    }
+  } catch (error) {
+    console.error('chat stream error:', error);
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: (error as Error).message || 'chat stream failed' })}\n\n`);
+      res.write('data: [DONE]\n\n');
       res.end();
+      return;
     }
-  };
 
-  const defaultSystem = await getDefaultPrompt();
-
-  await agent.runWithStream({
-    messages: llmMessages,
-    system: defaultSystem,
-    res: llmRes,
-    maxLoops: 100,
-    sessionId: sid,
-    addMessage: async (msg) => {
-      await addMessage(sid, msg, session);
-    }
-  });
-
-  // 流结束后，设置 session title
-  const isFirstMessage = (res as any)._isFirstMessage;
-  const userContent = (res as any)._userContent;
-  if (isFirstMessage && userContent) {
-    const title = userContent.slice(0, 20) || '新会话';
-    await updateSessionTitle(sid, title);
-    console.log(`✓ Title set for session ${sid}: ${title}`);
+    res.status(502).json({
+      error: 'chat stream failed',
+      message: (error as Error).message || 'chat stream failed'
+    });
   }
 });
 
@@ -126,10 +138,7 @@ router.delete('/chat/session/:sessionId', async (req: Request, res: Response) =>
 router.get('/sessions', async (_req: Request, res: Response) => {
   const fs = await import('fs/promises');
   const path = await import('path');
-  const { fileURLToPath } = await import('url');
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const DATA_DIR = path.join(__dirname, '../../data/sessions');
+  const DATA_DIR = getDataSubdir('sessions');
 
   console.log('DATA_DIR:', DATA_DIR);
 

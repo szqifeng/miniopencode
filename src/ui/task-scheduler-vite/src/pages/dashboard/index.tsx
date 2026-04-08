@@ -27,7 +27,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Run, Report, Task, TaskDraftResolveResult, TaskFile, TaskScheduleConfig } from '../../services/types';
-import { reportsAPI, runsAPI, tasksAPI } from '../../services/api';
+import { getApiBase, reportsAPI, runsAPI, tasksAPI } from '../../services/api';
 
 const { Sider, Content } = Layout;
 
@@ -198,6 +198,7 @@ export default function Dashboard() {
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isResolvingDraft, setIsResolvingDraft] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
+  const [isRunningTask, setIsRunningTask] = useState(false);
   const [modalChatInput, setModalChatInput] = useState('');
   const [modalChatMessages, setModalChatMessages] = useState<ModalChatMessage[]>([
     { id: 'assistant-init', role: 'assistant', content: initialAssistantMessage, kind: 'text' },
@@ -540,6 +541,7 @@ export default function Dashboard() {
     }
 
     try {
+      setIsRunningTask(true);
       const result = await tasksAPI.run(selectedTask.id);
       if (!result.success) {
         throw new Error(result.errorMessage || '执行失败');
@@ -548,6 +550,8 @@ export default function Dashboard() {
       await Promise.all([fetchTasks(), fetchRuns(), fetchReports()]);
     } catch (error) {
       message.error((error as Error).message || '执行失败');
+    } finally {
+      setIsRunningTask(false);
     }
   };
 
@@ -626,7 +630,7 @@ export default function Dashboard() {
 
   const streamChatReply = async (assistantMessageId: string, content: string) => {
     setAssistantContent(assistantMessageId, '正在连接对话...', 'status', '处理中');
-    const response = await fetch('/api/web/chat/stream', {
+    const response = await fetch(`${getApiBase()}/web/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -863,7 +867,13 @@ export default function Dashboard() {
                   >
                     {selectedTask.status === 'active' ? '暂停任务' : '恢复任务'}
                   </Button>
-                  <Button type="primary" icon={<RocketOutlined />} onClick={handleRunTask}>
+                  <Button
+                    type="primary"
+                    icon={<RocketOutlined />}
+                    onClick={handleRunTask}
+                    loading={isRunningTask}
+                    disabled={isRunningTask}
+                  >
                     立即运行
                   </Button>
                   <Button icon={<EditOutlined />} onClick={openEditModal}>

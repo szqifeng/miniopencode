@@ -9,13 +9,25 @@ import type { LLMRes } from './llm.js';
 import { LLMMessage, Message, Part } from './types.js';
 import { AsyncLocalStorage } from 'node:async_hooks';
 
-const sessionIdStorage = new AsyncLocalStorage<string>();
-
-export function getCurrentSessionId(): string | undefined {
-  return sessionIdStorage.getStore();
+interface ExecutionContext {
+  sessionId?: string;
+  workspaceDir?: string;
 }
 
-function wrapToolsWithSessionId(tools: Record<string, any> | undefined, sessionId: string): Record<string, any> | undefined {
+const executionContextStorage = new AsyncLocalStorage<ExecutionContext>();
+
+export function getCurrentSessionId(): string | undefined {
+  return executionContextStorage.getStore()?.sessionId;
+}
+
+export function getCurrentWorkspaceDir(): string | undefined {
+  return executionContextStorage.getStore()?.workspaceDir;
+}
+
+function wrapToolsWithExecutionContext(
+  tools: Record<string, any> | undefined,
+  context: ExecutionContext
+): Record<string, any> | undefined {
   if (!tools) return undefined;
   
   const wrapped: Record<string, any> = {};
@@ -24,7 +36,7 @@ function wrapToolsWithSessionId(tools: Record<string, any> | undefined, sessionI
       wrapped[name] = {
         ...tool,
         execute: async (args: Record<string, unknown>) => {
-          return sessionIdStorage.run(sessionId, () => {
+          return executionContextStorage.run(context, () => {
             return tool.execute(args);
           });
         }
@@ -41,6 +53,7 @@ interface ProcessTaskParams {
   system?: string;
   tools?: Parameters<typeof llmChat>[0]['tools'];
   maxLoops?: number;
+  workspaceDir?: string;
 }
 
 interface ProcessTaskWithStreamParams extends ProcessTaskParams {
@@ -49,15 +62,16 @@ interface ProcessTaskWithStreamParams extends ProcessTaskParams {
   addMessage?: (message: Message) => Promise<void>;
 }
 
-export async function processTask({ messages, system, tools, maxLoops = 5 }: ProcessTaskParams) {
+export async function processTask({ messages, system, tools, maxLoops = 5, workspaceDir }: ProcessTaskParams) {
   const currentMessages: LLMMessage[] = [...messages];
   let fullText = '';
+  const wrappedTools = wrapToolsWithExecutionContext(tools as Record<string, any>, { workspaceDir });
 
   for (let loop = 0; loop < maxLoops; loop++) {
     const result = await llmChat({
       messages: currentMessages,
       system,
-      tools,
+      tools: wrappedTools,
       toolCallStreaming: false
     }) as { fullStream: AsyncIterable<Record<string, unknown>>, finishReason?: string };
 
@@ -98,12 +112,16 @@ export async function processTaskWithStream({
   maxLoops = 5,
   res,
   sessionId,
+  workspaceDir,
   addMessage
 }: ProcessTaskWithStreamParams) {
   const currentMessages: LLMMessage[] = [...messages];
   let finalText = '';
   const assistantMessages: Message[] = [];
-  const wrappedTools = sessionId ? wrapToolsWithSessionId(tools as Record<string, any>, sessionId) : tools;
+  const wrappedTools = wrapToolsWithExecutionContext(tools as Record<string, any>, {
+    sessionId,
+    workspaceDir
+  });
 
   for (let loop = 0; loop < maxLoops; loop++) {
     const result = await llmChat({

@@ -1,10 +1,26 @@
+export interface TaskScheduleConfig {
+  minute?: number;
+  time?: string;
+  weekday?: number;
+}
+
+export interface TaskFile {
+  name: string;
+  path: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface Task {
   id: string;
   name: string;
   inputFilePath: string;
-  schedule: 'once' | 'daily' | 'weekly';
+  workspaceDir: string;
+  uploadedFiles: TaskFile[];
+  schedule: 'manual' | 'hourly' | 'daily' | 'weekly';
+  scheduleConfig?: TaskScheduleConfig;
   scheduleTime?: string;
-  status: 'active' | 'paused' | 'error';
+  status: 'active' | 'completed' | 'paused' | 'error';
   analysisGoal?: string;
   outputFormat: 'markdown';
   lastRunAt?: string;
@@ -75,6 +91,34 @@ export interface ChatStreamRequest {
   sessionId: string;
   messages: ChatStreamMessage[];
   useTools: boolean;
+  workspaceDir?: string;
+}
+
+export interface TaskDraftResolveRequest {
+  messages: ChatStreamMessage[];
+  draft: Partial<Pick<Task, 'name' | 'inputFilePath' | 'schedule' | 'scheduleConfig' | 'scheduleTime' | 'analysisGoal'>>;
+}
+
+export interface TaskDraftResolveResult {
+  name: string;
+  analysisGoal: string;
+  schedule: Task['schedule'] | '';
+  scheduleConfig: {
+    minute: number | null;
+    time: string;
+    weekday: number | null;
+  };
+  scheduleTime: string;
+  summary: string[];
+  missing: string[];
+  warnings: string[];
+}
+
+export interface TaskFileUploadResult {
+  taskId: string;
+  workspaceDir: string;
+  inputFilePath: string;
+  file: TaskFile;
 }
 
 export interface ChatStreamStartEvent {

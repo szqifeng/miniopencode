@@ -10,6 +10,7 @@ import {
   disableTask,
   enableTask,
   executeTask,
+  executeTaskWithStream,
   getChatHistory,
   getChatSettings,
   getKnowledgeById,
@@ -24,11 +25,13 @@ import {
   listTaskRuns,
   listTasks,
   listTools,
+  resolveTaskDraftInput,
   updateChatSettings,
   updateKnowledge,
   updateTask,
   updateTool
 } from './service.js';
+import { saveTaskUpload } from './taskWorkspace.js';
 
 const router = express.Router();
 
@@ -54,6 +57,13 @@ function sendFailure(res: Response, errorMessage: string, status = 400): void {
   });
 }
 
+function setupSSE(res: Response): void {
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.flushHeaders();
+}
+
 router.get('/tasks', async (_req: Request, res: Response) => {
   const tasks = await listTasks();
   sendSuccess(res, tasks, tasks.length);
@@ -76,6 +86,56 @@ router.post('/tasks', async (req: Request, res: Response) => {
     sendFailure(res, (error as Error).message);
   }
 });
+
+router.post('/tasks/draft/resolve', async (req: Request, res: Response) => {
+  try {
+    const result = await resolveTaskDraftInput({
+      messages: Array.isArray(req.body?.messages) ? req.body.messages : [],
+      draft: typeof req.body?.draft === 'object' && req.body?.draft ? req.body.draft : {}
+    });
+    sendSuccess(res, result);
+  } catch (error) {
+    sendFailure(res, (error as Error).message || '任务草稿解析失败', 500);
+  }
+});
+
+router.post(
+  '/tasks/:id/files',
+  express.raw({ type: () => true, limit: '50mb' }),
+  async (req: Request, res: Response) => {
+    try {
+      const taskId = getParam(req.params.id);
+      const fileNameHeader = req.header('x-file-name');
+      const fileName = fileNameHeader ? decodeURIComponent(fileNameHeader) : '';
+      if (!taskId) {
+        sendFailure(res, '任务 ID 不能为空');
+        return;
+      }
+      if (!fileName) {
+        sendFailure(res, '缺少文件名');
+        return;
+      }
+      if (!/\.(csv|xlsx)$/i.test(fileName)) {
+        sendFailure(res, '当前仅支持 CSV 或 XLSX 文件');
+        return;
+      }
+      if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+        sendFailure(res, '上传内容不能为空');
+        return;
+      }
+
+      const result = await saveTaskUpload(taskId, fileName, req.body);
+      sendSuccess(res, {
+        taskId,
+        workspaceDir: result.workspaceDir,
+        inputFilePath: result.inputFilePath,
+        file: result.file
+      });
+    } catch (error) {
+      sendFailure(res, (error as Error).message || '文件上传失败', 500);
+    }
+  }
+);
 
 router.put('/tasks/:id', async (req: Request, res: Response) => {
   try {
@@ -100,6 +160,27 @@ router.post('/tasks/:id/run', async (req: Request, res: Response) => {
     const result = await executeTask(getParam(req.params.id));
     sendSuccess(res, result.run);
   } catch (error) {
+    sendFailure(res, (error as Error).message || '任务执行失败', 500);
+  }
+});
+
+router.post('/tasks/:id/run/stream', async (req: Request, res: Response) => {
+  try {
+    setupSSE(res);
+    const llmRes = {
+      write: (data: string) => res.write(data),
+      end: () => {
+        res.end();
+      }
+    };
+    await executeTaskWithStream(getParam(req.params.id), llmRes);
+  } catch (error) {
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: (error as Error).message || '任务执行失败' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
     sendFailure(res, (error as Error).message || '任务执行失败', 500);
   }
 });

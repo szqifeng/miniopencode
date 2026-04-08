@@ -1,13 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { AppState, ChatMessage, KnowledgeItem, ToolRecord } from './types.js';
+import type { AppState, ChatMessage, KnowledgeItem, Task, ToolRecord } from './types.js';
 import { BUILTIN_TOOL_CATALOG } from '../services/toolService.js';
+import { getDataSubdir } from '../utils/paths.js';
+import { formatScheduleTime } from './taskDraft.js';
+import { getTaskWorkspaceDir } from './taskWorkspace.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const DATA_DIR = process.env.APP_DATA_DIR
   ? path.resolve(process.env.APP_DATA_DIR)
-  : path.join(__dirname, '../../data/app');
+  : getDataSubdir('app');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 
 function buildDefaultTools(now: string): ToolRecord[] {
@@ -98,7 +101,7 @@ function mergeBuiltinTools(existingTools: ToolRecord[]): ToolRecord[] {
 function normalizeState(partial: Partial<AppState> | null | undefined): AppState {
   const defaults = createDefaultState();
   return {
-    tasks: partial?.tasks ?? defaults.tasks,
+    tasks: (partial?.tasks ?? defaults.tasks).map((task) => normalizeTask(task)),
     runs: partial?.runs ?? defaults.runs,
     reports: partial?.reports ?? defaults.reports,
     tools: mergeBuiltinTools(partial?.tools ?? defaults.tools),
@@ -108,6 +111,23 @@ function normalizeState(partial: Partial<AppState> | null | undefined): AppState
       ...defaults.chatSettings,
       ...(partial?.chatSettings || {})
     }
+  };
+}
+
+function normalizeTask(task: Task): Task {
+  const legacySchedule = (task as { schedule?: string }).schedule;
+  const normalizedSchedule = (
+    legacySchedule === 'once' ? 'manual' : (legacySchedule || 'manual')
+  ) as Task['schedule'];
+  const scheduleConfig = task.scheduleConfig || {};
+
+  return {
+    ...task,
+    schedule: normalizedSchedule,
+    workspaceDir: task.workspaceDir || getTaskWorkspaceDir(task.id),
+    uploadedFiles: task.uploadedFiles || [],
+    scheduleConfig,
+    scheduleTime: task.scheduleTime || formatScheduleTime(normalizedSchedule, scheduleConfig)
   };
 }
 

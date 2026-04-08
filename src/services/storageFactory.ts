@@ -2,6 +2,7 @@ export const STORAGE_TYPES = {
   FILE: 'file',
   MYSQL: 'mysql'
 } as const;
+import { getDataSubdir } from '../utils/paths.js';
 
 export type StorageType = typeof STORAGE_TYPES[keyof typeof STORAGE_TYPES];
 
@@ -18,9 +19,7 @@ interface Storage {
 async function createFileStorage(): Promise<Storage> {
   const fs = await import('fs/promises');
   const path = await import('path');
-  const { fileURLToPath } = await import('url');
-  const __dirname = path.dirname(fileURLToPath(import.meta.url));
-  const DATA_DIR = path.join(__dirname, '../../data/records');
+  const DATA_DIR = getDataSubdir('records');
 
   async function ensureDir(): Promise<void> {
     try {

@@ -10,8 +10,8 @@ export class MiniOpenCodeServer {
   private modules: Map<string, Module> = new Map();
   private server: ReturnType<Express['listen']> | null = null;
 
-  constructor() {
-    this.port = parseInt(process.env.PORT || '3000', 10);
+  constructor(options: { port?: number } = {}) {
+    this.port = options.port ?? parseInt(process.env.PORT || '3000', 10);
   }
 
   register(name: string, module: Module): void {
@@ -23,6 +23,16 @@ export class MiniOpenCodeServer {
     this.app = express();
 
     this.app.use(express.json());
+    this.app.use((req, res, next) => {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-API-Key');
+      res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+      if (req.method === 'OPTIONS') {
+        res.status(204).end();
+        return;
+      }
+      next();
+    });
 
     this.app.get('/health', (_req, res) => {
       res.json({ status: 'ok', timestamp: new Date().toISOString() });
@@ -48,6 +58,10 @@ export class MiniOpenCodeServer {
     return new Promise((resolve) => {
       if (this.app) {
         this.server = this.app.listen(this.port, () => {
+          const address = this.server?.address();
+          if (address && typeof address === 'object') {
+            this.port = address.port;
+          }
           console.log(`🚀 MiniOpenCode server running on http://localhost:${this.port}`);
           console.log(`📋 API Key: ${process.env.API_KEY ? 'configured' : 'NOT SET'}`);
           console.log(`🤖 AI Provider: ${process.env.MINIMAX_CN_API_KEY ? 'configured' : 'NOT SET'}`);
@@ -61,6 +75,10 @@ export class MiniOpenCodeServer {
     if (this.server) {
       this.server.close();
     }
+  }
+
+  getPort(): number {
+    return this.port;
   }
 }
 

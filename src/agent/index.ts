@@ -15,6 +15,7 @@ interface AgentRunParams {
   messages: LLMMessage[];
   system?: string;
   maxLoops?: number;
+  workspaceDir?: string;
 }
 
 interface AgentRunWithStreamParams extends AgentRunParams {
@@ -35,17 +36,18 @@ export function createAgent(tools: ToolSet = TOOLS): Agent {
   return {
     tools,
 
-    async run({ messages, system, maxLoops = 5 }: AgentRunParams) {
+    async run({ messages, system, maxLoops = 5, workspaceDir }: AgentRunParams) {
       const systemPrompt = system || await getDefaultPrompt();
       return processTask({
         messages,
         system: systemPrompt,
         tools: tools as Parameters<typeof processTask>[0]['tools'],
-        maxLoops
+        maxLoops,
+        workspaceDir
       });
     },
 
-    async runWithStream({ messages, system, maxLoops = 5, res, sessionId, addMessage }: AgentRunWithStreamParams) {
+    async runWithStream({ messages, system, maxLoops = 5, res, sessionId, addMessage, workspaceDir }: AgentRunWithStreamParams) {
       const systemPrompt = system || await getDefaultPrompt();
       return processTaskWithStream({
         messages,
@@ -54,6 +56,7 @@ export function createAgent(tools: ToolSet = TOOLS): Agent {
         maxLoops,
         res,
         sessionId,
+        workspaceDir,
         addMessage
       });
     },

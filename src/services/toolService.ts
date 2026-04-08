@@ -11,7 +11,8 @@ import { promisify } from 'node:util';
 import https from 'node:https';
 import http from 'node:http';
 import * as XLSX from 'xlsx';
-import { getCurrentSessionId } from '../agent/process.js';
+import { getCurrentSessionId, getCurrentWorkspaceDir } from '../agent/process.js';
+import { getDataSubdir } from '../utils/paths.js';
 
 interface ToolResult {
   output: string;
@@ -30,7 +31,8 @@ function resolveToolPath(targetPath: string): string {
   if (path.isAbsolute(targetPath)) {
     return targetPath;
   }
-  return path.resolve(process.cwd(), targetPath);
+  const workspaceDir = getCurrentWorkspaceDir();
+  return path.resolve(workspaceDir || process.cwd(), targetPath);
 }
 
 function parseStructuredRows(rowsJson: string): Array<Record<string, unknown>> {
@@ -146,6 +148,7 @@ const writeTool = {
   async execute({ path: targetPath, content }: { path: string; content: string }): Promise<ToolResult> {
     try {
       const resolvedPath = resolveToolPath(targetPath);
+      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
       await fs.writeFile(resolvedPath, content, 'utf-8');
       return {
         output: `已写入文件: ${resolvedPath}`,
@@ -263,6 +266,7 @@ const excelWriteTool = {
   async execute({ path: targetPath, sheet, rowsJson, mode = 'replace' }: { path: string; sheet: string; rowsJson: string; mode?: 'replace' | 'append' }): Promise<ToolResult> {
     try {
       const resolvedPath = resolveToolPath(targetPath);
+      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
       const incomingRows = parseStructuredRows(rowsJson);
       let workbook: XLSX.WorkBook;
       let finalRows = incomingRows;
@@ -355,6 +359,7 @@ const csvWriteTool = {
   async execute({ path: targetPath, rowsJson, delimiter = ',', mode = 'replace' }: { path: string; rowsJson: string; delimiter?: string; mode?: 'replace' | 'append' }): Promise<ToolResult> {
     try {
       const resolvedPath = resolveToolPath(targetPath);
+      await fs.mkdir(path.dirname(resolvedPath), { recursive: true });
       const incomingRows = parseStructuredRows(rowsJson);
       let finalRows = incomingRows;
 
@@ -429,7 +434,7 @@ const grepTool = {
   async execute({ pattern, path: searchPath, include }: { pattern: string; path?: string; include?: string }): Promise<ToolResult> {
     try {
       const regex = new RegExp(pattern, 'g');
-      const cwd = searchPath || process.cwd();
+      const cwd = resolveToolPath(searchPath || '.');
       const results = await searchFiles(cwd, regex, include);
       if (results.length === 0) {
         return { output: '未找到匹配结果', title: '搜索结果', metadata: { pattern, path: cwd } };
@@ -454,9 +459,10 @@ const bashTool = {
   }),
   async execute({ command, cwd }: { command: string; cwd?: string }): Promise<ToolResult> {
     try {
-      const { stdout, stderr } = await execAsync(command, { cwd });
+      const effectiveCwd = cwd ? resolveToolPath(cwd) : (getCurrentWorkspaceDir() || process.cwd());
+      const { stdout, stderr } = await execAsync(command, { cwd: effectiveCwd });
       const output = stderr || stdout;
-      return { output: output || '(无输出)', title: '命令执行结果', metadata: { command, cwd, stdout, stderr } };
+      return { output: output || '(无输出)', title: '命令执行结果', metadata: { command, cwd: effectiveCwd, stdout, stderr } };
     } catch (error) {
       return { output: `命令执行失败: ${(error as Error).message}`, title: '错误', metadata: { error: (error as Error).message } };
     }
@@ -531,10 +537,7 @@ interface TodoData {
 }
 
 async function getTodoFilePath(): Promise<string> {
-  const { fileURLToPath } = await import('url');
-  const { dirname } = await import('path');
-  const __dirname = dirname(fileURLToPath(import.meta.url));
-  const sessionDir = path.join(__dirname, '../../data/sessions');
+  const sessionDir = getDataSubdir('sessions');
   try {
     await fs.access(sessionDir);
   } catch {

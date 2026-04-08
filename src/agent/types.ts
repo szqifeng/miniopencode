@@ -169,6 +169,7 @@ export interface ChatRequest {
   }>;
   system?: string;
   useTools?: boolean;
+  workspaceDir?: string;
 }
 
 // ============ API 响应类型 ============

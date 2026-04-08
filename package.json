@@ -7,6 +7,12 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "dev": "tsx --watch src/index.ts",
+    "build:server": "tsc -p tsconfig.json --outDir dist-server --declaration false --sourceMap false",
+    "build:ui": "npm --prefix src/ui/task-scheduler-vite run build",
+    "build:desktop": "npm run build:server && npm run build:ui",
+    "desktop:preview": "npm run build:desktop && electron desktop/main.mjs",
+    "desktop:dev": "npm run build:server && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron desktop/main.mjs",
+    "dist:mac": "npm run build:desktop && electron-builder --mac",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
     "test:run": "vitest run",
@@ -41,10 +47,35 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^25.5.0",
+    "electron": "^37.2.0",
+    "electron-builder": "^26.0.12",
     "node-fetch": "^3.3.2",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^2.1.0"
+  },
+  "build": {
+    "appId": "com.szqifeng.miniopencode",
+    "productName": "MiniOpenCode",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "desktop/**/*",
+      "dist-server/**/*",
+      "src/ui/task-scheduler-vite/dist/**/*",
+      "package.json"
+    ],
+    "extraMetadata": {
+      "main": "desktop/main.mjs"
+    },
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        "dmg",
+        "zip"
+      ]
+    }
   },
   "engines": {
     "node": ">=22.0.0"

@@ -1,5 +1,18 @@
 import type { Tool, Task, Run, Report, ChatMessage, ChatSettings, KnowledgeItem } from '../services/types';
 
+function buildMockWorkspace(taskId: string) {
+  return `/workspace/tasks/${taskId}/workspace`;
+}
+
+function buildMockUpload(_taskId: string, fileName: string) {
+  return {
+    name: fileName,
+    path: `uploads/${fileName}`,
+    size: 0,
+    uploadedAt: '2026-04-01T00:00:00Z',
+  };
+}
+
 const mockTools: Tool[] = [
   { id: '1', name: '表格质量检查器', type: 'script', description: '扫描 CSV / XLSX 的空值、重复值与异常列。', status: 'active', createdAt: '2026-03-10T01:00:00Z', updatedAt: '2026-03-18T01:00:00Z' },
   { id: '2', name: '销售归因摘要器', type: 'script', description: '按区域与渠道汇总销售波动并输出摘要。', status: 'active', createdAt: '2026-03-11T01:00:00Z', updatedAt: '2026-03-20T01:00:00Z' },
@@ -11,8 +24,11 @@ const mockTasks: Task[] = [
   {
     id: '1',
     name: '销售周报摘要',
-    inputFilePath: '/workspace/reports/sales-weekly.xlsx',
+    inputFilePath: 'uploads/sales-weekly.xlsx',
+    workspaceDir: buildMockWorkspace('1'),
+    uploadedFiles: [buildMockUpload('1', 'sales-weekly.xlsx')],
     schedule: 'weekly',
+    scheduleConfig: { weekday: 1, time: '09:00' },
     scheduleTime: '周一 09:00',
     status: 'active',
     analysisGoal: '输出销售摘要、区域波动和重点异常门店。',
@@ -25,8 +41,11 @@ const mockTasks: Task[] = [
   {
     id: '2',
     name: '库存日报巡检',
-    inputFilePath: '/workspace/reports/inventory-daily.csv',
+    inputFilePath: 'uploads/inventory-daily.csv',
+    workspaceDir: buildMockWorkspace('2'),
+    uploadedFiles: [buildMockUpload('2', 'inventory-daily.csv')],
     schedule: 'daily',
+    scheduleConfig: { time: '18:00' },
     scheduleTime: '18:00',
     status: 'active',
     analysisGoal: '输出缺货风险、积压 SKU 和仓库异常波动。',
@@ -39,9 +58,12 @@ const mockTasks: Task[] = [
   {
     id: '3',
     name: '财务快照复核',
-    inputFilePath: '/workspace/reports/finance-snapshot.xlsx',
-    schedule: 'once',
-    scheduleTime: '立即执行',
+    inputFilePath: 'uploads/finance-snapshot.xlsx',
+    workspaceDir: buildMockWorkspace('3'),
+    uploadedFiles: [buildMockUpload('3', 'finance-snapshot.xlsx')],
+    schedule: 'manual',
+    scheduleConfig: {},
+    scheduleTime: '仅手动执行',
     status: 'paused',
     analysisGoal: '输出费用异常、重复付款和大额偏差说明。',
     outputFormat: 'markdown',
@@ -52,8 +74,11 @@ const mockTasks: Task[] = [
   {
     id: '4',
     name: '客诉归因追踪',
-    inputFilePath: '/workspace/reports/complaints.csv',
+    inputFilePath: 'uploads/complaints.csv',
+    workspaceDir: buildMockWorkspace('4'),
+    uploadedFiles: [buildMockUpload('4', 'complaints.csv')],
     schedule: 'weekly',
+    scheduleConfig: { weekday: 3, time: '14:00' },
     scheduleTime: '周三 14:00',
     status: 'error',
     analysisGoal: '归纳投诉主题、重复问题和需要人工复盘的案例。',
@@ -127,15 +152,16 @@ function addDuration(base: Date, minutes: number) {
 }
 
 function getNextRunAt(task: Task, from = new Date()) {
-  if (task.schedule === 'once') {
+  if (task.schedule === 'manual') {
     return undefined;
   }
 
   const next = new Date(from);
-  if (task.schedule === 'daily') {
+  if (task.schedule === 'hourly') {
+    next.setHours(next.getHours() + 1);
+  } else if (task.schedule === 'daily') {
     next.setUTCDate(next.getUTCDate() + 1);
-  }
-  if (task.schedule === 'weekly') {
+  } else if (task.schedule === 'weekly') {
     next.setUTCDate(next.getUTCDate() + 7);
   }
 
@@ -161,8 +187,11 @@ export const mockHandlers = {
       id: String(mockTasks.length + 1),
       name: body.name || '',
       inputFilePath: body.inputFilePath || '',
-      schedule: body.schedule || 'once',
-      scheduleTime: body.scheduleTime || (body.schedule === 'weekly' ? '周一 09:00' : body.schedule === 'daily' ? '09:00' : '立即执行'),
+      workspaceDir: body.workspaceDir || buildMockWorkspace(String(mockTasks.length + 1)),
+      uploadedFiles: body.uploadedFiles || [],
+      schedule: body.schedule || 'manual',
+      scheduleConfig: body.scheduleConfig || {},
+      scheduleTime: body.scheduleTime || (body.schedule === 'weekly' ? '周一 09:00' : body.schedule === 'daily' ? '09:00' : body.schedule === 'hourly' ? '每小时 00 分' : '仅手动执行'),
       status: body.status || 'active',
       analysisGoal: body.analysisGoal || '生成结构化分析摘要',
       outputFormat: 'markdown',

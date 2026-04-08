@@ -6,6 +6,7 @@
 
 import { Message, Part, MessageRole, LLMMessage, Session, ToolCallPart, TodoItem } from './types.js';
 import { getStorage } from '../services/storageFactory.js';
+import { getDataSubdir } from '../utils/paths.js';
 
 let sessionStorage: {
   save: (session: Session) => Promise<Session>;
@@ -18,10 +19,7 @@ async function getSessionStorage() {
 
   const fs = await import('fs/promises');
   const path = await import('path');
-  const { fileURLToPath } = await import('url');
-  const __filename = fileURLToPath(import.meta.url);
-  const __dirname = path.dirname(__filename);
-  const DATA_DIR = path.join(__dirname, '../../data/sessions');
+  const DATA_DIR = getDataSubdir('sessions');
 
   console.log('session.ts DATA_DIR:', DATA_DIR);
 

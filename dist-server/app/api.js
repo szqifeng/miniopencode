@@ -1,0 +1,297 @@
+import express from 'express';
+import { appendChatMessage, createKnowledge, createTask, createTool, deleteKnowledge, deleteTask, deleteTool, disableTask, enableTask, executeTask, executeTaskWithStream, getChatHistory, getChatSettings, getKnowledgeById, getReportById, getRunById, getTaskById, getToolById, listKnowledge, listReports, listRuns, listTaskReports, listTaskRuns, listTasks, listTools, resolveTaskDraftInput, updateChatSettings, updateKnowledge, updateTask, updateTool } from './service.js';
+import { saveTaskUpload } from './taskWorkspace.js';
+const router = express.Router();
+function getParam(value) {
+    if (Array.isArray(value)) {
+        return value[0] || '';
+    }
+    return value || '';
+}
+function sendSuccess(res, data, total) {
+    res.json({
+        success: true,
+        data,
+        total
+    });
+}
+function sendFailure(res, errorMessage, status = 400) {
+    res.status(status).json({
+        success: false,
+        errorMessage
+    });
+}
+function setupSSE(res) {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+}
+router.get('/tasks', async (_req, res) => {
+    const tasks = await listTasks();
+    sendSuccess(res, tasks, tasks.length);
+});
+router.get('/tasks/:id', async (req, res) => {
+    const task = await getTaskById(getParam(req.params.id));
+    if (!task) {
+        sendFailure(res, '任务不存在', 404);
+        return;
+    }
+    sendSuccess(res, task);
+});
+router.post('/tasks', async (req, res) => {
+    try {
+        const task = await createTask(req.body);
+        sendSuccess(res, task);
+    }
+    catch (error) {
+        sendFailure(res, error.message);
+    }
+});
+router.post('/tasks/draft/resolve', async (req, res) => {
+    try {
+        const result = await resolveTaskDraftInput({
+            messages: Array.isArray(req.body?.messages) ? req.body.messages : [],
+            draft: typeof req.body?.draft === 'object' && req.body?.draft ? req.body.draft : {}
+        });
+        sendSuccess(res, result);
+    }
+    catch (error) {
+        sendFailure(res, error.message || '任务草稿解析失败', 500);
+    }
+});
+router.post('/tasks/:id/files', express.raw({ type: () => true, limit: '50mb' }), async (req, res) => {
+    try {
+        const taskId = getParam(req.params.id);
+        const fileNameHeader = req.header('x-file-name');
+        const fileName = fileNameHeader ? decodeURIComponent(fileNameHeader) : '';
+        if (!taskId) {
+            sendFailure(res, '任务 ID 不能为空');
+            return;
+        }
+        if (!fileName) {
+            sendFailure(res, '缺少文件名');
+            return;
+        }
+        if (!/\.(csv|xlsx)$/i.test(fileName)) {
+            sendFailure(res, '当前仅支持 CSV 或 XLSX 文件');
+            return;
+        }
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+            sendFailure(res, '上传内容不能为空');
+            return;
+        }
+        const result = await saveTaskUpload(taskId, fileName, req.body);
+        sendSuccess(res, {
+            taskId,
+            workspaceDir: result.workspaceDir,
+            inputFilePath: result.inputFilePath,
+            file: result.file
+        });
+    }
+    catch (error) {
+        sendFailure(res, error.message || '文件上传失败', 500);
+    }
+});
+router.put('/tasks/:id', async (req, res) => {
+    try {
+        const task = await updateTask(getParam(req.params.id), req.body);
+        sendSuccess(res, task);
+    }
+    catch (error) {
+        sendFailure(res, error.message, error.message === '任务不存在' ? 404 : 400);
+    }
+});
+router.delete('/tasks/:id', async (req, res) => {
+    const deleted = await deleteTask(getParam(req.params.id));
+    if (!deleted) {
+        sendFailure(res, '任务不存在', 404);
+        return;
+    }
+    sendSuccess(res);
+});
+router.post('/tasks/:id/run', async (req, res) => {
+    try {
+        const result = await executeTask(getParam(req.params.id));
+        sendSuccess(res, result.run);
+    }
+    catch (error) {
+        sendFailure(res, error.message || '任务执行失败', 500);
+    }
+});
+router.post('/tasks/:id/run/stream', async (req, res) => {
+    try {
+        setupSSE(res);
+        const llmRes = {
+            write: (data) => res.write(data),
+            end: () => {
+                res.end();
+            }
+        };
+        await executeTaskWithStream(getParam(req.params.id), llmRes);
+    }
+    catch (error) {
+        if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || '任务执行失败' })}\n\n`);
+            res.write('data: [DONE]\n\n');
+            res.end();
+            return;
+        }
+        sendFailure(res, error.message || '任务执行失败', 500);
+    }
+});
+router.post('/tasks/:id/enable', async (req, res) => {
+    try {
+        const task = await enableTask(getParam(req.params.id));
+        sendSuccess(res, task);
+    }
+    catch (error) {
+        sendFailure(res, error.message, 404);
+    }
+});
+router.post('/tasks/:id/disable', async (req, res) => {
+    try {
+        const task = await disableTask(getParam(req.params.id));
+        sendSuccess(res, task);
+    }
+    catch (error) {
+        sendFailure(res, error.message, 404);
+    }
+});
+router.get('/tasks/:taskId/runs', async (req, res) => {
+    const runs = await listTaskRuns(getParam(req.params.taskId));
+    sendSuccess(res, runs, runs.length);
+});
+router.get('/tasks/:taskId/reports', async (req, res) => {
+    const reports = await listTaskReports(getParam(req.params.taskId));
+    sendSuccess(res, reports, reports.length);
+});
+router.get('/runs', async (_req, res) => {
+    const runs = await listRuns();
+    sendSuccess(res, runs, runs.length);
+});
+router.get('/runs/:id', async (req, res) => {
+    const run = await getRunById(getParam(req.params.id));
+    if (!run) {
+        sendFailure(res, '运行记录不存在', 404);
+        return;
+    }
+    sendSuccess(res, run);
+});
+router.get('/reports', async (_req, res) => {
+    const reports = await listReports();
+    sendSuccess(res, reports, reports.length);
+});
+router.get('/reports/:id', async (req, res) => {
+    const report = await getReportById(getParam(req.params.id));
+    if (!report) {
+        sendFailure(res, '报告不存在', 404);
+        return;
+    }
+    sendSuccess(res, report);
+});
+router.get('/tools', async (_req, res) => {
+    const tools = await listTools();
+    sendSuccess(res, tools, tools.length);
+});
+router.get('/tools/:id', async (req, res) => {
+    const tool = await getToolById(getParam(req.params.id));
+    if (!tool) {
+        sendFailure(res, '工具不存在', 404);
+        return;
+    }
+    sendSuccess(res, tool);
+});
+router.post('/tools', async (req, res) => {
+    try {
+        const tool = await createTool(req.body);
+        sendSuccess(res, tool);
+    }
+    catch (error) {
+        sendFailure(res, error.message);
+    }
+});
+router.put('/tools/:id', async (req, res) => {
+    try {
+        const tool = await updateTool(getParam(req.params.id), req.body);
+        sendSuccess(res, tool);
+    }
+    catch (error) {
+        sendFailure(res, error.message, 404);
+    }
+});
+router.delete('/tools/:id', async (req, res) => {
+    const deleted = await deleteTool(getParam(req.params.id));
+    if (!deleted) {
+        sendFailure(res, '工具不存在', 404);
+        return;
+    }
+    sendSuccess(res);
+});
+router.get('/knowledge', async (_req, res) => {
+    const items = await listKnowledge();
+    sendSuccess(res, items, items.length);
+});
+router.get('/knowledge/:id', async (req, res) => {
+    const item = await getKnowledgeById(getParam(req.params.id));
+    if (!item) {
+        sendFailure(res, '知识不存在', 404);
+        return;
+    }
+    sendSuccess(res, item);
+});
+router.post('/knowledge', async (req, res) => {
+    try {
+        const item = await createKnowledge(req.body);
+        sendSuccess(res, item);
+    }
+    catch (error) {
+        sendFailure(res, error.message);
+    }
+});
+router.put('/knowledge/:id', async (req, res) => {
+    try {
+        const item = await updateKnowledge(getParam(req.params.id), req.body);
+        sendSuccess(res, item);
+    }
+    catch (error) {
+        sendFailure(res, error.message, 404);
+    }
+});
+router.delete('/knowledge/:id', async (req, res) => {
+    const deleted = await deleteKnowledge(getParam(req.params.id));
+    if (!deleted) {
+        sendFailure(res, '知识不存在', 404);
+        return;
+    }
+    sendSuccess(res);
+});
+router.post('/chat', async (req, res) => {
+    const userContent = typeof req.body?.message === 'string' ? req.body.message : '';
+    const reply = '任务聊天已迁移到流式接口，这里只保留兼容占位响应。';
+    if (userContent) {
+        await appendChatMessage({ role: 'user', content: userContent });
+    }
+    const message = await appendChatMessage({ role: 'assistant', content: reply });
+    sendSuccess(res, {
+        reply,
+        timestamp: message.timestamp
+    });
+});
+router.get('/chat/history', async (req, res) => {
+    const limit = Number(req.query.limit || 20);
+    const messages = await getChatHistory(limit);
+    sendSuccess(res, messages, messages.length);
+});
+router.get('/chat/settings', async (_req, res) => {
+    const settings = await getChatSettings();
+    sendSuccess(res, settings);
+});
+router.put('/chat/settings', async (req, res) => {
+    const settings = await updateChatSettings(req.body || {});
+    sendSuccess(res, settings);
+});
+export function setupAppApi(app) {
+    app.use('/api', router);
+}
+export default { setup: setupAppApi };
