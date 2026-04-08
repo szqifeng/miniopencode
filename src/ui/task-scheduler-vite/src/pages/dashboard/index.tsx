@@ -182,6 +182,10 @@ function toExcerpt(markdown: string) {
 }
 
 export default function Dashboard() {
+  const isDesktopRuntime =
+    window.location.protocol === 'file:' ||
+    Boolean(window.__MINIOPENCODE_DESKTOP__?.apiBase) ||
+    Boolean(new URLSearchParams(window.location.search).get('miniopencodeApiBase'));
   const [tasks, setTasks] = useState<Task[]>([]);
   const [runs, setRuns] = useState<Run[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
@@ -768,7 +772,11 @@ export default function Dashboard() {
             <Card className="task-alert-inline-card">
               <strong>后端未连接</strong>
               <p>{connectionIssue}</p>
-              <span>需要先启动根目录服务：`npm run dev`</span>
+              <span>
+                {isDesktopRuntime
+                  ? '桌面版会自动启动内置后端，请重启应用并确认使用的是最新打包版本。'
+                  : '需要先启动根目录服务：`npm run dev`'}
+              </span>
             </Card>
           ) : null}
 

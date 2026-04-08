@@ -19,6 +19,7 @@ async function startBackend() {
 
 async function createMainWindow() {
   const backendBaseUrl = await startBackend();
+  const desktopApiBase = `${backendBaseUrl}/api`;
 
   const window = new BrowserWindow({
     width: 1480,
@@ -31,17 +32,23 @@ async function createMainWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       preload: path.join(__dirname, 'preload.mjs'),
-      additionalArguments: [`--miniopencode-api-base=${backendBaseUrl}/api`]
+      additionalArguments: [`--miniopencode-api-base=${desktopApiBase}`]
     }
   });
 
   if (isDev) {
-    await window.loadURL(process.env.VITE_DEV_SERVER_URL);
+    const devUrl = new URL(process.env.VITE_DEV_SERVER_URL);
+    devUrl.searchParams.set('miniopencodeApiBase', desktopApiBase);
+    await window.loadURL(devUrl.toString());
     window.webContents.openDevTools({ mode: 'detach' });
     return;
   }
 
-  await window.loadFile(path.join(appRoot, 'src/ui/task-scheduler-vite/dist/index.html'));
+  await window.loadFile(path.join(appRoot, 'src/ui/task-scheduler-vite/dist/index.html'), {
+    query: {
+      miniopencodeApiBase: desktopApiBase,
+    },
+  });
 }
 
 app.whenReady().then(async () => {

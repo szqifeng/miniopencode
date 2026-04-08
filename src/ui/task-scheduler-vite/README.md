@@ -122,6 +122,12 @@ export const yourAPI = {
 - 上传文件使用 `/api/tasks/:id/files`
 - 任务运行会由后端调用 agent 并生成 Markdown 报告
 
+桌面打包模式不会依赖根目录手动启动服务：
+
+- Electron 主进程会先拉起内置后端
+- renderer 优先读取 preload 注入的 `apiBase`
+- 如果 preload 注入缺失，会回退读取窗口 URL 上的 `miniopencodeApiBase`
+
 ## 当前新建任务流程
 
 1. 打开“新建分析任务”弹层后，前端先生成一个临时 `taskId`

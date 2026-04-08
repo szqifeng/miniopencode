@@ -13,7 +13,13 @@ import type {
 } from './types';
 
 export function getApiBase() {
-  return window.__MINIOPENCODE_DESKTOP__?.apiBase || '/api';
+  const desktopApiBase = window.__MINIOPENCODE_DESKTOP__?.apiBase;
+  if (desktopApiBase) {
+    return desktopApiBase;
+  }
+
+  const urlApiBase = new URLSearchParams(window.location.search).get('miniopencodeApiBase');
+  return urlApiBase || '/api';
 }
 
 const API_BASE = getApiBase();
