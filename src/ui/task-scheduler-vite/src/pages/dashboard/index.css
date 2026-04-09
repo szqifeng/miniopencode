@@ -212,6 +212,7 @@
 .rule-row,
 .editor-panel-header,
 .editor-input-row,
+.report-card-extra,
 .draft-preview-row,
 .form-grid {
   display: flex;
@@ -227,8 +228,14 @@
 .activity-row-top,
 .rule-row,
 .editor-panel-header,
+.report-card-extra,
 .draft-preview-row {
   justify-content: space-between;
+}
+
+.report-card-extra {
+  align-items: center;
+  gap: 6px;
 }
 
 .task-list-item-title {

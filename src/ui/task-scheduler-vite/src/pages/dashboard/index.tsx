@@ -1,5 +1,6 @@
 import './index.css';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import {
   App as AntdApp,
   Button,
@@ -15,6 +16,7 @@ import {
 } from 'antd';
 import {
   DeleteOutlined,
+  FilePdfOutlined,
   EditOutlined,
   FileTextOutlined,
   PauseCircleOutlined,
@@ -30,6 +32,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Run, Report, Task, TaskDraftResolveResult, TaskFile } from '../../services/types';
 import { getApiBase, reportsAPI, runsAPI, tasksAPI } from '../../services/api';
+import ReportExportDocument from './components/ReportExportDocument.tsx';
 
 const { Sider, Content } = Layout;
 
@@ -632,6 +635,215 @@ export default function Dashboard() {
     }
   };
 
+  const handleExportReportPdf = () => {
+    if (!selectedTask || !activeReport) {
+      message.error('当前没有可导出的报告');
+      return;
+    }
+
+    const reportTitle = activeReport.id === latestReport?.id ? '最新报告' : '所选报告';
+    const reportHtml = renderToStaticMarkup(
+      <ReportExportDocument
+        taskName={selectedTask.name}
+        analysisGoal={selectedTask.analysisGoal}
+        inputFilePath={selectedTask.inputFilePath}
+        reportTitle={reportTitle}
+        report={activeReport}
+        createdAtLabel={formatDateTime(activeReport.createdAt)}
+      />,
+    );
+
+    const iframe = document.createElement('iframe');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.setAttribute('aria-hidden', 'true');
+    document.body.appendChild(iframe);
+
+    const printDocument = iframe.contentWindow?.document;
+    if (!printDocument || !iframe.contentWindow) {
+      document.body.removeChild(iframe);
+      message.error('导出环境初始化失败');
+      return;
+    }
+
+    printDocument.open();
+    printDocument.write(`<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <title>${selectedTask.name} - ${reportTitle}</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        padding: 32px;
+        color: #172033;
+        background:
+          radial-gradient(circle at top left, rgba(255, 242, 214, 0.7), transparent 24%),
+          radial-gradient(circle at top right, rgba(207, 250, 245, 0.78), transparent 28%),
+          linear-gradient(180deg, #fcfaf4 0%, #f6f7fb 58%, #eef2f7 100%);
+        font-family: 'Avenir Next', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      }
+      .report-export-document {
+        max-width: 920px;
+        margin: 0 auto;
+        padding: 28px;
+        border: 1px solid rgba(23, 32, 51, 0.08);
+        border-radius: 28px;
+        background: rgba(255, 255, 255, 0.92);
+        box-shadow: 0 20px 48px rgba(15, 23, 42, 0.08);
+      }
+      .report-export-header {
+        margin-bottom: 24px;
+        padding-bottom: 20px;
+        border-bottom: 1px solid rgba(23, 32, 51, 0.1);
+      }
+      .report-export-kicker {
+        display: inline-block;
+        margin-bottom: 14px;
+        color: #0f766e;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+      }
+      .report-export-hero {
+        display: flex;
+        justify-content: space-between;
+        gap: 20px;
+        align-items: flex-start;
+      }
+      .report-export-header h1 {
+        margin: 0 0 10px;
+        font-size: 30px;
+        color: #152033;
+      }
+      .report-export-header p {
+        margin: 0;
+        color: #61708a;
+        font-size: 14px;
+        line-height: 1.7;
+      }
+      .report-export-badges {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        min-width: 180px;
+      }
+      .report-export-badges span {
+        display: inline-flex;
+        justify-content: center;
+        padding: 10px 14px;
+        border-radius: 999px;
+        background: rgba(15, 118, 110, 0.08);
+        color: #0f766e;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .report-export-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 14px;
+        margin-bottom: 22px;
+      }
+      .report-export-summary-card {
+        padding: 16px 18px;
+        border-radius: 20px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(245,248,252,0.92));
+        border: 1px solid rgba(23, 32, 51, 0.07);
+      }
+      .report-export-summary-card span {
+        display: block;
+        margin-bottom: 8px;
+        color: #7990a3;
+        font-size: 12px;
+      }
+      .report-export-summary-card strong {
+        color: #152033;
+        font-size: 14px;
+        word-break: break-word;
+      }
+      .report-export-body {
+        padding: 22px 24px;
+        border-radius: 22px;
+        background: linear-gradient(180deg, rgba(251, 251, 248, 0.96), rgba(245, 247, 252, 0.94));
+        border: 1px solid rgba(23, 32, 51, 0.07);
+      }
+      .report-export-body h1,
+      .report-export-body h2,
+      .report-export-body h3 {
+        margin: 0 0 12px;
+        color: #152033;
+      }
+      .report-export-body p,
+      .report-export-body li {
+        color: #324155;
+        line-height: 1.72;
+      }
+      .report-export-body table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 0 0 12px;
+        font-size: 13px;
+      }
+      .report-export-body th,
+      .report-export-body td {
+        padding: 8px 10px;
+        border: 1px solid rgba(23, 32, 51, 0.1);
+        text-align: left;
+      }
+      .report-export-body th {
+        background: rgba(15, 118, 110, 0.08);
+        color: #152033;
+      }
+      .report-export-body ul,
+      .report-export-body ol {
+        margin: 0;
+        padding-left: 20px;
+      }
+      @media print {
+        body { padding: 0; background: #fff; }
+        .report-export-document {
+          max-width: none;
+          border: 0;
+          border-radius: 0;
+          box-shadow: none;
+          padding: 0;
+          background: #fff;
+        }
+      }
+      @media (max-width: 720px) {
+        .report-export-hero,
+        .report-export-summary {
+          display: block;
+        }
+        .report-export-badges {
+          margin-top: 16px;
+        }
+        .report-export-summary-card + .report-export-summary-card {
+          margin-top: 12px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    ${reportHtml}
+  </body>
+</html>`);
+    printDocument.close();
+    window.setTimeout(() => {
+      iframe.contentWindow?.focus();
+      iframe.contentWindow?.print();
+      window.setTimeout(() => {
+        document.body.removeChild(iframe);
+      }, 1000);
+    }, 200);
+  };
+
   const setAssistantContent = (
     messageId: string,
     content: string,
@@ -1086,7 +1298,20 @@ export default function Dashboard() {
 
                   <Card
                     title={activeReport?.id === latestReport?.id ? '最新报告' : '所选报告'}
-                    extra={activeReport ? <span className="card-meta-text">{formatDateTime(activeReport.createdAt)}</span> : null}
+                    extra={
+                      activeReport ? (
+                        <div className="report-card-extra">
+                          <span className="card-meta-text">{formatDateTime(activeReport.createdAt)}</span>
+                          <Button
+                            type="text"
+                            size="small"
+                            icon={<FilePdfOutlined />}
+                            onClick={handleExportReportPdf}
+                            aria-label="导出为 PDF"
+                          />
+                        </div>
+                      ) : null
+                    }
                     className="detail-card detail-card-report"
                   >
                     {activeReport ? (
