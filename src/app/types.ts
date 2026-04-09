@@ -22,7 +22,7 @@ export interface Task {
   scheduleTime?: string;
   status: 'active' | 'completed' | 'paused' | 'error';
   analysisGoal?: string;
-  outputFormat: 'markdown';
+  outputFormat: 'markdown' | 'file';
   lastRunAt?: string;
   nextRunAt?: string;
   createdAt: string;

@@ -1,4 +1,6 @@
 import express, { Request, Response } from 'express';
+import type { LLMRes } from '../agent/llm.js';
+import { runTaskWorkbenchChatStream } from './chatStreamService.js';
 import {
   appendChatMessage,
   createKnowledge,
@@ -26,6 +28,7 @@ import {
   listTasks,
   listTools,
   resolveTaskDraftInput,
+  resolveTaskDraftFromSessionId,
   updateChatSettings,
   updateKnowledge,
   updateTask,
@@ -61,7 +64,16 @@ function setupSSE(res: Response): void {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+}
+
+function flushSSE(res: Response): void {
   res.flushHeaders();
+}
+
+function setupChatStreamSSE(res: Response, sessionId: string): void {
+  setupSSE(res);
+  res.setHeader('X-Session-Id', sessionId);
+  flushSSE(res);
 }
 
 router.get('/tasks', async (_req: Request, res: Response) => {
@@ -89,10 +101,10 @@ router.post('/tasks', async (req: Request, res: Response) => {
 
 router.post('/tasks/draft/resolve', async (req: Request, res: Response) => {
   try {
-    const result = await resolveTaskDraftInput({
-      messages: Array.isArray(req.body?.messages) ? req.body.messages : [],
-      draft: typeof req.body?.draft === 'object' && req.body?.draft ? req.body.draft : {}
-    });
+    // 约定：先调用 `/api/web/chat/stream` 完成会话消息写入，再调用本接口触发草稿解析。
+    // 本接口只接收 sessionId，具体对话内容从 session 存储中读取。
+    const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId : '';
+    const result = await resolveTaskDraftFromSessionId(sessionId);
     sendSuccess(res, result);
   } catch (error) {
     sendFailure(res, (error as Error).message || '任务草稿解析失败', 500);
@@ -167,6 +179,7 @@ router.post('/tasks/:id/run', async (req: Request, res: Response) => {
 router.post('/tasks/:id/run/stream', async (req: Request, res: Response) => {
   try {
     setupSSE(res);
+    flushSSE(res);
     const llmRes = {
       write: (data: string) => res.write(data),
       end: () => {
@@ -352,6 +365,60 @@ router.get('/chat/settings', async (_req: Request, res: Response) => {
 router.put('/chat/settings', async (req: Request, res: Response) => {
   const settings = await updateChatSettings(req.body || {});
   sendSuccess(res, settings);
+});
+
+router.post('/web/chat/stream', async (req: Request, res: Response) => {
+  try {
+    const sessionId =
+      typeof req.body?.sessionId === 'string' && req.body.sessionId
+        ? req.body.sessionId
+        : `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+
+    const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+    const workspaceDir = typeof req.body?.workspaceDir === 'string' ? req.body.workspaceDir : undefined;
+    const system = typeof req.body?.system === 'string' ? req.body.system : undefined;
+    const useTools = req.body?.useTools !== false;
+
+    if (messages.length === 0) {
+      sendFailure(res, 'messages is required', 400);
+      return;
+    }
+
+    setupChatStreamSSE(res, sessionId);
+
+    const llmRes: LLMRes = {
+      write: (data: string) => res.write(data),
+      end: () => res.end(),
+    };
+
+    // DDD: API 层只处理 HTTP/SSE 细节；编排逻辑由 app application service 承担。
+    await runTaskWorkbenchChatStream({
+      sessionId,
+      messages,
+      workspaceDir,
+      system,
+      useTools,
+      llmRes,
+      context: typeof req.body?.context === 'object' && req.body?.context
+        ? {
+          actualWorkspaceDir: (req.body.context as { actualWorkspaceDir?: unknown }).actualWorkspaceDir as string | undefined,
+          inputFilePath: (req.body.context as { inputFilePath?: unknown }).inputFilePath as string | undefined,
+          absoluteFilePath: (req.body.context as { absoluteFilePath?: unknown }).absoluteFilePath as string | undefined,
+          notes: (req.body.context as { notes?: unknown }).notes as string[] | undefined,
+        }
+        : undefined,
+    });
+  } catch (error) {
+    console.error('app chat stream error:', error);
+    if (res.headersSent) {
+      res.write(`data: ${JSON.stringify({ type: 'error', error: (error as Error).message || 'chat stream failed' })}\n\n`);
+      res.write('data: [DONE]\n\n');
+      res.end();
+      return;
+    }
+
+    sendFailure(res, (error as Error).message || 'chat stream failed', 502);
+  }
 });
 
 export function setupAppApi(app: express.Application): void {

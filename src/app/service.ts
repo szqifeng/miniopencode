@@ -9,13 +9,17 @@ import type {
   ToolRecord
 } from './types.js';
 import { generateId, readAppState, updateAppState } from './store.js';
-import { createAgent } from '../agent/index.js';
-import { getDefaultPrompt } from '../agent/prompts.js';
 import type { LLMRes } from '../agent/llm.js';
 import { deleteTaskWorkspace, ensureTaskWorkspace } from './taskWorkspace.js';
 import { formatScheduleTime, resolveTaskDraft as resolveTaskDraftWithAI } from './taskDraft.js';
+import {
+  buildTaskExecutionPrompt,
+  buildTaskExecutionSystemPrompt,
+  createTaskExecutionAgent
+} from './taskExecutionAgent.js';
+import { resolveTaskDraftBySessionId } from './taskDraftResolveService.js';
 
-type TaskPayload = Partial<Omit<Task, 'createdAt' | 'updatedAt' | 'outputFormat'>>;
+type TaskPayload = Partial<Omit<Task, 'createdAt' | 'updatedAt'>>;
 type ToolPayload = Partial<Omit<ToolRecord, 'id' | 'createdAt' | 'updatedAt'>>;
 type KnowledgePayload = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
 
@@ -86,27 +90,13 @@ function sortByDateDesc<T extends { createdAt?: string; updatedAt?: string; star
 }
 
 function getTaskExecutionPrompt(task: Task): string {
-  const fileType = task.inputFilePath.toLowerCase().endsWith('.xlsx') ? 'excel' : 'csv';
-  const toolHint = fileType === 'excel'
-    ? '请优先使用 excel_inspect 读取 sheet、列名和预览数据。'
-    : '请优先使用 csv_inspect 读取列名和预览数据。';
-
-  return [
-    '你现在是任务执行器，只负责完成当前表格分析任务。',
-    `任务名称：${task.name}`,
-    `任务工作目录：${task.workspaceDir}`,
-    `输入文件：${task.inputFilePath}`,
-    `执行方式：${task.schedule} / ${task.scheduleTime || formatScheduleTime(task.schedule, task.scheduleConfig)}`,
-    `分析目标：${task.analysisGoal || '生成结构化分析摘要'}`,
-    '要求：',
-    `- ${toolHint}`,
-    '- 所有相对路径都以任务工作目录为根目录。',
-    '- 可以在必要时使用 read、grep、excel_write、csv_write 等工具补充检查或输出结果。',
-    '- 最终回复必须是 Markdown，不要输出前言和工具调用解释。',
-    '- Markdown 至少包含：一级标题、执行概览、关键发现、建议动作。',
-    '- 如果识别到结构化数据，优先给出 Markdown 表格或列表摘要。',
-    '- 如果文件不存在或内容无法解析，明确说明失败原因。'
-  ].join('\n');
+  // 兼容历史调用：本函数保留但委托给 app 级 prompt builder。
+  // 新逻辑应优先使用 `buildTaskExecutionPrompt`，避免 service 内部拼接 prompt。
+  const normalized: Task = {
+    ...task,
+    scheduleTime: task.scheduleTime || formatScheduleTime(task.schedule, task.scheduleConfig || {})
+  };
+  return buildTaskExecutionPrompt(normalized);
 }
 
 async function runTaskWithAgent(task: Task, runId: string): Promise<string> {
@@ -114,12 +104,13 @@ async function runTaskWithAgent(task: Task, runId: string): Promise<string> {
     return process.env.MOCK_TASK_RUN_RESULT;
   }
 
-  const agent = createAgent();
+  // 使用 app 模块下的“任务执行专用 agent”，避免直接依赖通用 agent 的默认全量工具集。
+  const agent = createTaskExecutionAgent();
   const sink: LLMRes = {
     write: () => true,
     end: () => {}
   };
-  const baseSystem = await getDefaultPrompt();
+  const systemPrompt = await buildTaskExecutionSystemPrompt(task);
   const result = await agent.runWithStream({
     messages: [
       {
@@ -127,7 +118,7 @@ async function runTaskWithAgent(task: Task, runId: string): Promise<string> {
         content: getTaskExecutionPrompt(task)
       }
     ],
-    system: `${baseSystem}\n\n${getTaskExecutionPrompt(task)}`,
+    system: `${systemPrompt}\n\n${getTaskExecutionPrompt(task)}`,
     res: sink,
     maxLoops: 30,
     sessionId: `task_run_${runId}`,
@@ -171,7 +162,7 @@ export async function createTask(payload: TaskPayload): Promise<Task> {
       scheduleTime: payload.scheduleTime || formatScheduleTime(schedule, payload.scheduleConfig || {}),
       status: payload.status || 'active',
       analysisGoal: payload.analysisGoal || '',
-      outputFormat: 'markdown',
+      outputFormat: payload.outputFormat || 'markdown',
       createdAt: now,
       updatedAt: now
     };
@@ -184,6 +175,21 @@ export async function createTask(payload: TaskPayload): Promise<Task> {
 
 export async function resolveTaskDraftInput(params: Parameters<typeof resolveTaskDraftWithAI>[0]) {
   return resolveTaskDraftWithAI(params);
+}
+
+/**
+ * 任务草稿解析（基于会话存储）
+ *
+ * 设计：
+ * - 前端调用聊天流接口后，服务端会把消息写入通用 session 存储（`src/agent/session.ts`）
+ * - 前端随后只需携带 `sessionId` 调用 resolve 接口即可完成草稿解析
+ */
+export async function resolveTaskDraftFromSessionId(sessionId: string) {
+  if (!sessionId) {
+    throw new Error('sessionId is required');
+  }
+  // 当前先按“只传 sessionId”的协议实现；如需把 UI 草稿字段也纳入解析，可在此处补充 draft 入参（保持向后兼容）。
+  return resolveTaskDraftBySessionId({ sessionId });
 }
 
 export async function updateTask(id: string, payload: TaskPayload): Promise<Task> {
@@ -206,7 +212,7 @@ export async function updateTask(id: string, payload: TaskPayload): Promise<Task
     task.scheduleTime = payload.scheduleTime ?? formatScheduleTime(nextSchedule, nextScheduleConfig);
     task.status = payload.status ?? task.status;
     task.analysisGoal = payload.analysisGoal ?? task.analysisGoal;
-    task.outputFormat = 'markdown';
+    task.outputFormat = payload.outputFormat ?? task.outputFormat ?? 'markdown';
     task.updatedAt = new Date().toISOString();
     task.nextRunAt = isTaskEnabledStatus(task.status) ? computeNextRunAt(task) : undefined;
     return task;
@@ -368,8 +374,8 @@ export async function executeTaskWithStream(
   });
 
   try {
-    const agent = createAgent();
-    const baseSystem = await getDefaultPrompt();
+    const agent = createTaskExecutionAgent();
+    const systemPrompt = await buildTaskExecutionSystemPrompt(taskSnapshot as Task);
     const result = await agent.runWithStream({
       messages: [
         {
@@ -377,7 +383,7 @@ export async function executeTaskWithStream(
           content: getTaskExecutionPrompt(taskSnapshot as Task)
         }
       ],
-      system: `${baseSystem}\n\n${getTaskExecutionPrompt(taskSnapshot as Task)}`,
+      system: `${systemPrompt}\n\n${getTaskExecutionPrompt(taskSnapshot as Task)}`,
       res,
       maxLoops: 30,
       sessionId: `task_run_${runningRun.id}`,

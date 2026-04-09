@@ -179,9 +179,21 @@ type Report = {
 
 - 任务、运行、报告、工具、知识库都通过 `/api/*` 访问
 - 聊天式任务编辑继续走 `/api/web/chat/stream`
+- `src/agent/*` 保持通用；app 业务通过 `src/app/*` 组装专属 agent（DDD: application/composition）
 - 手动运行任务时后端必须同时生成 `Run` 和 `Report`
 - 报告必须通过 `taskId` 与 `runId` 挂到任务结果下
 - 任务状态变化要同步更新时间和调度时间
+
+### App 专属 Agent（实现位置）
+
+- 流式聊天接口实现：`src/app/api.ts` 的 `POST /api/web/chat/stream`
+- 聊天专属 agent 组装：`src/app/taskWorkbenchChatAgent.ts`
+- 任务执行专属 agent 组装：`src/app/taskExecutionAgent.ts`
+
+约束说明：
+
+- 聊天 agent 仅用于“任务澄清与结构化”，工具白名单不包含 `edit/write`
+- 任务执行 agent 通过工具白名单控制能力边界，避免默认暴露通用 agent 的全量工具
 
 ### 当前任务运行闭环
 

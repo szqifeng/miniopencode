@@ -13,6 +13,16 @@ curl --location 'http://localhost:3000/api/web/chat/stream' \
   }'
 ```
 
+## Implementation Notes
+
+- 路由实现位置：`src/app/api.ts`（`POST /api/web/chat/stream`）
+- app 专属聊天 agent：`src/app/taskWorkbenchChatAgent.ts`
+- 设计原则：`src/agent/*` 仅提供通用 agent 能力；app 业务在 `src/app/*` 通过系统提示词与工具白名单进行组装
+
+安全约束：
+
+- 表格任务工作台的聊天 agent 工具白名单默认不包含 `edit/write`，避免出现写文件/改文件建议
+
 ---
 
 ## Request Schema

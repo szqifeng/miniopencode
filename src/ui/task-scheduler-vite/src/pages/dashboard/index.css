@@ -298,6 +298,26 @@
   min-width: 168px;
 }
 
+/*
+  AntD Button 在 `loading` 时会同步进入 disabled 状态，默认样式会把主按钮与 loading icon 一起淡化变色。
+  这里仅针对“立即运行”按钮覆写：保持按钮与 spinner 颜色不变，但仍然禁用点击（由 antd 的 disabled 语义保证）。
+*/
+.run-task-button.ant-btn-loading,
+.run-task-button.ant-btn-loading:disabled,
+.run-task-button.ant-btn-loading.ant-btn-disabled {
+  opacity: 1;
+  background: var(--ant-color-primary);
+  border-color: var(--ant-color-primary);
+  color: var(--ant-color-text-light-solid);
+}
+
+.run-task-button.ant-btn-loading .ant-btn-loading-icon,
+.run-task-button.ant-btn-loading .ant-btn-loading-icon .anticon,
+.run-task-button.ant-btn-loading .ant-btn-icon,
+.run-task-button.ant-btn-loading .ant-btn-icon .anticon {
+  color: currentColor;
+}
+
 .task-summary-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -745,6 +765,31 @@
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(248, 250, 252, 0.94));
 }
 
+.editor-form-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.draft-preview-loading {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #0f766e;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(10px);
+  border-radius: 18px;
+  border: 1px solid rgba(15, 118, 110, 0.12);
+}
+
 .editor-panel-header {
   align-items: flex-start;
   gap: 16px;
@@ -1046,6 +1091,46 @@
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(244, 248, 252, 0.96), rgba(250, 251, 253, 0.92));
   border: 1px solid rgba(23, 32, 51, 0.06);
+}
+
+.draft-summary-card {
+  padding: 16px 18px;
+  margin-bottom: 16px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 250, 240, 0.92), rgba(252, 252, 252, 0.9));
+  border: 1px solid rgba(23, 32, 51, 0.06);
+}
+
+.draft-summary-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+  color: #b45309;
+}
+
+.draft-summary-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #2c3a4b;
+  line-height: 1.65;
+}
+
+.draft-summary-empty {
+  margin: 0;
+  color: #61708a;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.draft-summary-tags {
+  margin-top: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  color: #61708a;
+  font-size: 12px;
 }
 
 .upload-selected-header {

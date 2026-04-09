@@ -22,7 +22,7 @@ export interface Task {
   scheduleTime?: string;
   status: 'active' | 'completed' | 'paused' | 'error';
   analysisGoal?: string;
-  outputFormat: 'markdown';
+  outputFormat: 'markdown' | 'file';
   lastRunAt?: string;
   nextRunAt?: string;
   createdAt: string;
@@ -92,11 +92,32 @@ export interface ChatStreamRequest {
   messages: ChatStreamMessage[];
   useTools: boolean;
   workspaceDir?: string;
+  context?: {
+    /**
+     * 当前聊天绑定的真实工作空间目录。
+     * 用于让 agent 明确知道所有文件查询都应基于这个 workspace。
+     */
+    actualWorkspaceDir?: string;
+    /**
+     * 当前聊天关联的输入文件路径（相对任务工作目录或用户可读路径均可）。
+     * 服务端会用它生成“文件名上下文”，并要求 assistant 的回复携带该文件名。
+     */
+    inputFilePath?: string;
+    /**
+     * 当前输入文件的绝对路径。
+     * 聊天场景下优先传这个值，避免 agent 只拿到文件名后自行猜路径。
+     */
+    absoluteFilePath?: string;
+    /**
+     * UI 侧的上下文备注（例如“已上传文件并设为当前输入”、“已切换到文件”）。
+     * 服务端会将这些备注作为对话上下文注入 system prompt，帮助 agent 理解当前文件状态。
+     */
+    notes?: string[];
+  };
 }
 
 export interface TaskDraftResolveRequest {
-  messages: ChatStreamMessage[];
-  draft: Partial<Pick<Task, 'name' | 'inputFilePath' | 'schedule' | 'scheduleConfig' | 'scheduleTime' | 'analysisGoal'>>;
+  sessionId: string;
 }
 
 export interface TaskDraftResolveResult {

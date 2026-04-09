@@ -9,6 +9,7 @@ import {
   Layout,
   Modal,
   Select,
+  Spin,
   Tag,
   message,
 } from 'antd';
@@ -26,7 +27,7 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Run, Report, Task, TaskDraftResolveResult, TaskFile, TaskScheduleConfig } from '../../services/types';
+import type { Run, Report, Task, TaskDraftResolveResult, TaskFile } from '../../services/types';
 import { getApiBase, reportsAPI, runsAPI, tasksAPI } from '../../services/api';
 
 const { Sider, Content } = Layout;
@@ -67,14 +68,6 @@ function createEmptyScheduleConfig() {
   };
 }
 
-function toApiScheduleConfig(scheduleConfig?: TaskFormValues['scheduleConfig'] | null): TaskScheduleConfig {
-  return {
-    minute: typeof scheduleConfig?.minute === 'number' ? scheduleConfig.minute : undefined,
-    time: scheduleConfig?.time || undefined,
-    weekday: typeof scheduleConfig?.weekday === 'number' ? scheduleConfig.weekday : undefined,
-  };
-}
-
 function buildScheduleTime(schedule: Task['schedule'] | undefined) {
   if (!schedule) {
     return '';
@@ -99,6 +92,27 @@ function buildDraftAssistantReply(result: TaskDraftResolveResult) {
   }
 
   return sections.join('\n\n') || '这条描述还不足以更新任务草稿，请继续补充文件、频率或分析目标。';
+}
+
+function normalizeAssistantMarkdown(content: string) {
+  const normalized = String(content || '').trimStart();
+  const duplicateFileHeader = normalized.match(/^(【文件：[^】]+】)(?:\s*\1)+/);
+  if (!duplicateFileHeader) {
+    return normalized;
+  }
+  return normalized.replace(/^(【文件：[^】]+】)(?:\s*\1)+/, duplicateFileHeader[1]);
+}
+
+function joinWorkspaceFilePath(workspaceDir?: string, inputFilePath?: string) {
+  const base = String(workspaceDir || '').trim();
+  const relative = String(inputFilePath || '').trim();
+  if (!base || !relative) {
+    return '';
+  }
+  if (relative.startsWith('/')) {
+    return relative;
+  }
+  return `${base}/${relative}`.replace(/\/+/g, '/');
 }
 
 function createDraftTaskId() {
@@ -201,9 +215,12 @@ export default function Dashboard() {
   const [editorUploadedFiles, setEditorUploadedFiles] = useState<TaskFile[]>([]);
   const [isUploadingFile, setIsUploadingFile] = useState(false);
   const [isResolvingDraft, setIsResolvingDraft] = useState(false);
+  const [isDraftPreviewLoading, setIsDraftPreviewLoading] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isRunningTask, setIsRunningTask] = useState(false);
   const [modalChatInput, setModalChatInput] = useState('');
+  const [draftResolveResult, setDraftResolveResult] = useState<TaskDraftResolveResult | null>(null);
+  const [chatContextNotes, setChatContextNotes] = useState<string[]>([]);
   const [modalChatMessages, setModalChatMessages] = useState<ModalChatMessage[]>([
     { id: 'assistant-init', role: 'assistant', content: initialAssistantMessage, kind: 'text' },
   ]);
@@ -338,6 +355,8 @@ export default function Dashboard() {
     setEditorTaskId(nextDraftTaskId);
     setEditorWorkspaceDir('');
     setEditorUploadedFiles([]);
+    setDraftResolveResult(null);
+    setChatContextNotes([]);
     form.resetFields();
     form.setFieldsValue({
       name: '',
@@ -365,6 +384,8 @@ export default function Dashboard() {
     setEditorTaskId(selectedTask.id);
     setEditorWorkspaceDir(selectedTask.workspaceDir);
     setEditorUploadedFiles(selectedTask.uploadedFiles || []);
+    setDraftResolveResult(null);
+    setChatContextNotes([]);
     form.setFieldsValue({
       name: selectedTask.name,
       inputFilePath: selectedTask.inputFilePath,
@@ -398,8 +419,9 @@ export default function Dashboard() {
       scheduleConfig: createEmptyScheduleConfig(),
       analysisGoal: result.analysisGoal,
       status: form.getFieldValue('status') || 'active',
-      outputFormat: 'markdown',
+      outputFormat: form.getFieldValue('outputFormat') || 'markdown',
     });
+    setDraftResolveResult(result);
   };
 
   const handleUploadButtonClick = () => {
@@ -434,12 +456,14 @@ export default function Dashboard() {
         return nextFiles;
       });
       form.setFieldValue('inputFilePath', uploadData.inputFilePath);
+      const note = `已上传 ${file.name}，并设为当前输入文件。`;
+      setChatContextNotes(prev => [...prev, note].slice(-8));
       setModalChatMessages(prev => [
         ...prev,
         {
           id: `assistant-upload-${Date.now()}`,
           role: 'assistant',
-          content: `已上传 ${file.name}，并设为当前输入文件。继续描述任务目标、执行频率或时间即可。`,
+          content: `${note}继续描述任务目标、执行频率或时间即可。`,
           kind: 'text',
         },
       ]);
@@ -453,12 +477,14 @@ export default function Dashboard() {
 
   const handleUseUploadedFile = (file: TaskFile) => {
     form.setFieldValue('inputFilePath', file.path);
+    const note = `已切换到文件 ${file.name}。`;
+    setChatContextNotes(prev => [...prev, note].slice(-8));
     setModalChatMessages(prev => [
       ...prev,
       {
         id: `assistant-file-${Date.now()}`,
         role: 'assistant',
-        content: `已切换到文件 ${file.name}。`,
+        content: note,
         kind: 'text',
       },
     ]);
@@ -478,23 +504,11 @@ export default function Dashboard() {
     try {
       setIsSavingTask(true);
       const values = await form.validateFields();
-      const draftMessages = modalChatMessages
-        .filter(messageItem => messageItem.role === 'user' || messageItem.role === 'assistant')
-        .map(messageItem => ({
-          role: messageItem.role as 'user' | 'assistant',
-          content: messageItem.content,
-        }));
-      const draftResolution = await tasksAPI.resolveDraft({
-        messages: draftMessages,
-        draft: {
-          name: values.name,
-          inputFilePath: values.inputFilePath,
-          schedule: values.schedule,
-          scheduleConfig: toApiScheduleConfig(values.scheduleConfig),
-          scheduleTime: buildScheduleTime(values.schedule),
-          analysisGoal: values.analysisGoal,
-        },
-      });
+      // 保存任务时再次触发解析：只传 sessionId，消息正文由后端从存储中读取。
+      // 用于把“聊天中的任务描述”抽象为稳定的 `analysisGoal` 文本。
+      setIsDraftPreviewLoading(true);
+      const draftResolution = await tasksAPI.resolveDraft({ sessionId: chatSessionId });
+      setIsDraftPreviewLoading(false);
       const finalAnalysisGoal =
         draftResolution.success && draftResolution.data?.analysisGoal
           ? draftResolution.data.analysisGoal
@@ -508,7 +522,7 @@ export default function Dashboard() {
         scheduleTime: buildScheduleTime('manual'),
         analysisGoal: finalAnalysisGoal,
         status: values.status || 'active',
-        outputFormat: 'markdown',
+        outputFormat: values.outputFormat || 'markdown',
         uploadedFiles: editorUploadedFiles,
         workspaceDir: editingTask ? editorWorkspaceDir || editingTask.workspaceDir : editorWorkspaceDir || undefined,
       };
@@ -536,6 +550,7 @@ export default function Dashboard() {
       message.error((error as Error).message || '请先补全任务配置');
     } finally {
       setIsSavingTask(false);
+      setIsDraftPreviewLoading(false);
     }
   };
 
@@ -603,37 +618,26 @@ export default function Dashboard() {
     });
   };
 
-  const resolveDraftFromPrompt = async (content: string) => {
-    const currentValues = form.getFieldsValue(true) as Partial<TaskFormValues>;
-    const draftMessages = [...modalChatMessages, { id: `draft-user-${Date.now()}`, role: 'user' as const, content }]
-      .filter(messageItem => messageItem.role === 'user' || messageItem.role === 'assistant')
-      .map(messageItem => ({
-        role: messageItem.role as 'user' | 'assistant',
-        content: messageItem.content,
-      }));
+  const resolveDraftFromSession = async (sessionId: string) => {
+    setIsDraftPreviewLoading(true);
+    try {
+      const result = await tasksAPI.resolveDraft({ sessionId });
 
-    const result = await tasksAPI.resolveDraft({
-      messages: draftMessages,
-      draft: {
-          name: currentValues.name,
-          inputFilePath: currentValues.inputFilePath,
-          schedule: 'manual',
-          scheduleConfig: {},
-          scheduleTime: buildScheduleTime('manual'),
-          analysisGoal: currentValues.analysisGoal,
-      },
-    });
+      if (!result.success || !result.data) {
+        throw new Error(result.errorMessage || '任务草稿解析失败');
+      }
 
-    if (!result.success || !result.data) {
-      throw new Error(result.errorMessage || '任务草稿解析失败');
+      applyDraftResultToForm(result.data);
+      return result.data;
+    } finally {
+      setIsDraftPreviewLoading(false);
     }
-
-    applyDraftResultToForm(result.data);
-    return result.data;
   };
 
-  const streamChatReply = async (assistantMessageId: string, content: string) => {
-    setAssistantContent(assistantMessageId, '正在连接对话...', 'status', '处理中');
+  const streamChatReply = async (statusMessageId: string, content: string) => {
+    setAssistantContent(statusMessageId, '正在连接对话...', 'status', '处理中');
+    const currentInputFilePath = String(form.getFieldValue('inputFilePath') || '').trim();
+    const currentAbsoluteFilePath = joinWorkspaceFilePath(editorWorkspaceDir, currentInputFilePath);
     const response = await fetch(`${getApiBase()}/web/chat/stream`, {
       method: 'POST',
       headers: {
@@ -645,6 +649,12 @@ export default function Dashboard() {
         messages: [{ role: 'user', content }],
         useTools: true,
         workspaceDir: editorWorkspaceDir || undefined,
+        context: {
+          actualWorkspaceDir: editorWorkspaceDir || undefined,
+          inputFilePath: currentInputFilePath || undefined,
+          absoluteFilePath: currentAbsoluteFilePath || undefined,
+          notes: chatContextNotes.length > 0 ? chatContextNotes : undefined,
+        },
       }),
     });
 
@@ -656,6 +666,7 @@ export default function Dashboard() {
     const decoder = new TextDecoder();
     let buffer = '';
     let accumulatedText = '';
+    let accumulatedReasoning = '';
 
     while (true) {
       const { done, value } = await reader.read();
@@ -678,19 +689,105 @@ export default function Dashboard() {
           continue;
         }
 
-        const event = JSON.parse(payload) as { type: string; text?: string; finishReason?: string };
+        let event: { type: string } & Record<string, any>;
+        try {
+          event = JSON.parse(payload) as { type: string } & Record<string, any>;
+        } catch {
+          continue;
+        }
+
+        if (event.type === 'start') {
+          setAssistantContent(statusMessageId, '正在处理...', 'status', '处理中');
+          continue;
+        }
+
+        if (event.type === 'reasoning-start') {
+          accumulatedReasoning = '';
+          // 只保留一个 assistant 气泡：后续阶段会覆盖本条消息内容。
+          setAssistantContent(statusMessageId, '开始推理...', 'reasoning', '推理中');
+          continue;
+        }
+
+        if (event.type === 'reasoning-delta') {
+          const delta = String(event.text || '');
+          if (!delta) {
+            continue;
+          }
+          accumulatedReasoning += delta;
+          // 推理过程仅作为临时展示，进入 text 阶段后会被覆盖。
+          setAssistantContent(statusMessageId, accumulatedReasoning, 'reasoning', '推理中');
+          continue;
+        }
+
+        if (event.type === 'tool-call') {
+          const toolCallId = String(event.toolCallId || '');
+          const toolName = String(event.toolName || 'tool');
+          const toolInput = event.input ?? {};
+          const prettyInput = (() => {
+            try {
+              return JSON.stringify(toolInput, null, 2);
+            } catch {
+              return String(toolInput);
+            }
+          })();
+          setAssistantContent(
+            statusMessageId,
+            `调用：${toolName}\n输入：\n${prettyInput}`,
+            'tool',
+            toolCallId ? '工具调用' : '工具',
+          );
+          continue;
+        }
+
+        if (event.type === 'tool-result') {
+          const toolCallId = String(event.toolCallId || '');
+          const toolName = String(event.toolName || 'tool');
+          const output = event.output ?? event.result ?? '';
+          const prettyOutput = (() => {
+            try {
+              return typeof output === 'string' ? output : JSON.stringify(output, null, 2);
+            } catch {
+              return String(output);
+            }
+          })();
+          setAssistantContent(
+            statusMessageId,
+            `调用：${toolName}\n结果：\n${prettyOutput}`,
+            'tool',
+            toolCallId ? '工具结果' : '工具',
+          );
+          continue;
+        }
+
+        if (event.type === 'text-start') {
+          // 进入最终文本阶段：后续只渲染 markdown 拼接结果。
+          accumulatedText = '';
+          setAssistantContent(statusMessageId, '', 'text', '回复');
+          continue;
+        }
+
         if (event.type === 'text-delta') {
-          accumulatedText += event.text || '';
-          setAssistantContent(assistantMessageId, accumulatedText, 'text', '回复');
-        } else if (event.type === 'reasoning-start') {
-          setAssistantContent(assistantMessageId, '正在思考任务方案...', 'status', '处理中');
-        } else if (event.type === 'finish' && event.finishReason === 'stop' && accumulatedText) {
-          setAssistantContent(assistantMessageId, accumulatedText, 'text', '回复');
+          const delta = String(event.text || '');
+          if (!delta) {
+            continue;
+          }
+          accumulatedText += delta;
+          // 最终只保留这条 markdown（同一个 messageId 持续覆盖）。
+          setAssistantContent(statusMessageId, normalizeAssistantMarkdown(accumulatedText), 'text', '回复');
+          continue;
+        }
+
+        if (event.type === 'finish' && event.finishReason === 'stop') {
+          // finish 仅表示请求结束；如果已经进入 text 阶段，保留 markdown 不再覆盖。
+          if (!accumulatedText.trim()) {
+            setAssistantContent(statusMessageId, '对话完成', 'status', '完成');
+          }
+          continue;
         }
       }
     }
 
-    return accumulatedText.trim();
+    return normalizeAssistantMarkdown(accumulatedText).trim();
   };
 
   const submitPrompt = async (prompt: string) => {
@@ -700,12 +797,12 @@ export default function Dashboard() {
     }
 
     const userMessageId = `user-${Date.now()}`;
-    const assistantMessageId = `assistant-${Date.now()}`;
+    const assistantStatusId = `assistant-status-${Date.now()}`;
     setModalChatMessages(prev => [
       ...prev,
       { id: userMessageId, role: 'user', content },
       {
-        id: assistantMessageId,
+        id: assistantStatusId,
         role: 'assistant',
         content: '正在解析任务草稿...',
         kind: 'status',
@@ -715,35 +812,37 @@ export default function Dashboard() {
     setModalChatInput('');
     try {
       setIsResolvingDraft(true);
-      setAssistantContent(assistantMessageId, '正在解析任务并发起对话...', 'status', '处理中');
-      const [draftResult, streamResult] = await Promise.allSettled([
-        resolveDraftFromPrompt(content),
-        streamChatReply(assistantMessageId, content),
-      ]);
+      setAssistantContent(assistantStatusId, '正在发起对话...', 'status', '处理中');
 
-      if (streamResult.status === 'fulfilled' && streamResult.value) {
-        setAssistantContent(assistantMessageId, streamResult.value, 'text', '回复');
-        return;
+      let streamError: Error | null = null;
+      let streamedText = '';
+      try {
+        streamedText = await streamChatReply(assistantStatusId, content);
+      } catch (error) {
+        streamError = error as Error;
       }
 
-      if (draftResult.status === 'fulfilled') {
+      // 约定：聊天完成后再触发 resolve；resolve 只传 sessionId，消息从后端存储读取。
+      const draftResult = await resolveDraftFromSession(chatSessionId);
+
+      if (streamError) {
         setAssistantContent(
-          assistantMessageId,
-          `${buildDraftAssistantReply(draftResult.value)}\n\n聊天服务当前不可用，已先更新右侧任务草稿。`,
+          assistantStatusId,
+          `${buildDraftAssistantReply(draftResult)}\n\n聊天服务当前不可用，已先更新右侧任务草稿。`,
           'text',
           '回复',
         );
         return;
       }
 
-      throw new Error(
-        streamResult.status === 'rejected'
-          ? (streamResult.reason as Error).message || '聊天服务不可用'
-          : (draftResult.reason as Error).message || '任务草稿解析失败',
-      );
+      // chat 流式文本已在 `streamChatReply` 内部作为 assistant-text bubble 渲染；
+      // 这里仅在没有产生任何文本时，用解析结果做兜底输出。
+      if (!streamedText) {
+        setAssistantContent(assistantStatusId, buildDraftAssistantReply(draftResult), 'text', '回复');
+      }
     } catch (error) {
       setAssistantContent(
-        assistantMessageId,
+        assistantStatusId,
         (error as Error).message || '任务草稿解析失败，请继续补充信息。',
         'text',
         '回复',
@@ -877,6 +976,7 @@ export default function Dashboard() {
                   </Button>
                   <Button
                     type="primary"
+                    className="run-task-button"
                     icon={<RocketOutlined />}
                     onClick={handleRunTask}
                     loading={isRunningTask}
@@ -1145,7 +1245,15 @@ export default function Dashboard() {
               <span className="editor-tip">CSV / XLSX in, Markdown out</span>
             </div>
 
-            <Form form={form} layout="vertical" className="task-form">
+            <div className="editor-form-body">
+              {isDraftPreviewLoading ? (
+                <div className="draft-preview-loading" role="status" aria-live="polite">
+                  <Spin size="small" />
+                  <span>正在更新预览...</span>
+                </div>
+              ) : null}
+
+              <Form form={form} layout="vertical" className="task-form">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -1187,6 +1295,44 @@ export default function Dashboard() {
                 <strong>{draftValues.inputFilePath || '请在左侧输入区点击上传图标，添加 CSV / XLSX 文件'}</strong>
                 <p>文件会被保存到当前任务工作目录，后续 agent 运行也会使用同一个工作空间。</p>
                 {editorWorkspaceDir ? <p className="upload-workspace-hint">工作目录：{editorWorkspaceDir}</p> : null}
+              </div>
+
+              <div className="draft-summary-card">
+                <div className="draft-summary-header">
+                  <FileTextOutlined />
+                  <span className="summary-label">解析摘要</span>
+                </div>
+                {draftResolveResult?.summary?.length ? (
+                  <ul className="draft-summary-list">
+                    {draftResolveResult.summary.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="draft-summary-empty">发送一条任务描述后，这里会展示 AI 从对话中提取出的关键信息。</p>
+                )}
+
+                {draftResolveResult?.missing?.length ? (
+                  <div className="draft-summary-tags">
+                    <span>缺失：</span>
+                    {draftResolveResult.missing.map((item, index) => (
+                      <Tag key={`${item}-${index}`} color="warning">
+                        {item}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : null}
+
+                {draftResolveResult?.warnings?.length ? (
+                  <div className="draft-summary-tags">
+                    <span>提醒：</span>
+                    {draftResolveResult.warnings.map((item, index) => (
+                      <Tag key={`${item}-${index}`} color="gold">
+                        {item}
+                      </Tag>
+                    ))}
+                  </div>
+                ) : null}
               </div>
 
               <div className="schedule-row">
@@ -1231,10 +1377,16 @@ export default function Dashboard() {
                 </Form.Item>
 
                 <Form.Item name="outputFormat" label="输出格式" initialValue="markdown">
-                  <Input disabled />
+                  <Select
+                    options={[
+                      { value: 'markdown', label: 'Markdown' },
+                      { value: 'file', label: '文件' },
+                    ]}
+                  />
                 </Form.Item>
               </div>
-            </Form>
+              </Form>
+            </div>
           </section>
         </div>
       </Modal>
