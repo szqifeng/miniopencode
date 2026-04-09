@@ -399,14 +399,6 @@ router.post('/web/chat/stream', async (req: Request, res: Response) => {
       system,
       useTools,
       llmRes,
-      context: typeof req.body?.context === 'object' && req.body?.context
-        ? {
-          actualWorkspaceDir: (req.body.context as { actualWorkspaceDir?: unknown }).actualWorkspaceDir as string | undefined,
-          inputFilePath: (req.body.context as { inputFilePath?: unknown }).inputFilePath as string | undefined,
-          absoluteFilePath: (req.body.context as { absoluteFilePath?: unknown }).absoluteFilePath as string | undefined,
-          notes: (req.body.context as { notes?: unknown }).notes as string[] | undefined,
-        }
-        : undefined,
     });
   } catch (error) {
     console.error('app chat stream error:', error);

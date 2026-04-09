@@ -1,6 +1,7 @@
 import './index.css';
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from 'react';
 import {
+  App as AntdApp,
   Button,
   Card,
   Empty,
@@ -11,9 +12,9 @@ import {
   Select,
   Spin,
   Tag,
-  message,
 } from 'antd';
 import {
+  DeleteOutlined,
   EditOutlined,
   FileTextOutlined,
   PauseCircleOutlined,
@@ -103,18 +104,6 @@ function normalizeAssistantMarkdown(content: string) {
   return normalized.replace(/^(【文件：[^】]+】)(?:\s*\1)+/, duplicateFileHeader[1]);
 }
 
-function joinWorkspaceFilePath(workspaceDir?: string, inputFilePath?: string) {
-  const base = String(workspaceDir || '').trim();
-  const relative = String(inputFilePath || '').trim();
-  if (!base || !relative) {
-    return '';
-  }
-  if (relative.startsWith('/')) {
-    return relative;
-  }
-  return `${base}/${relative}`.replace(/\/+/g, '/');
-}
-
 function createDraftTaskId() {
   return `task_${Date.now()}`;
 }
@@ -196,6 +185,7 @@ function toExcerpt(markdown: string) {
 }
 
 export default function Dashboard() {
+  const { modal, message } = AntdApp.useApp();
   const isDesktopRuntime =
     window.location.protocol === 'file:' ||
     Boolean(window.__MINIOPENCODE_DESKTOP__?.apiBase) ||
@@ -204,6 +194,7 @@ export default function Dashboard() {
   const [runs, setRuns] = useState<Run[]>([]);
   const [reports, setReports] = useState<Report[]>([]);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
+  const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [taskModalVisible, setTaskModalVisible] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -218,9 +209,9 @@ export default function Dashboard() {
   const [isDraftPreviewLoading, setIsDraftPreviewLoading] = useState(false);
   const [isSavingTask, setIsSavingTask] = useState(false);
   const [isRunningTask, setIsRunningTask] = useState(false);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
   const [modalChatInput, setModalChatInput] = useState('');
   const [draftResolveResult, setDraftResolveResult] = useState<TaskDraftResolveResult | null>(null);
-  const [chatContextNotes, setChatContextNotes] = useState<string[]>([]);
   const [modalChatMessages, setModalChatMessages] = useState<ModalChatMessage[]>([
     { id: 'assistant-init', role: 'assistant', content: initialAssistantMessage, kind: 'text' },
   ]);
@@ -342,11 +333,24 @@ export default function Dashboard() {
   }, [taskReports, taskRuns]);
 
   const latestReport = taskReports[0];
+  const activeReport =
+    taskReports.find(report => report.id === selectedReportId) || latestReport || null;
   const lastFailedRun = taskRuns.find(run => run.status === 'failed');
   const successCount = taskRuns.filter(run => run.status === 'success').length;
   const successRate = taskRuns.length === 0 ? 0 : Math.round((successCount / taskRuns.length) * 100);
   const activeTaskCount = tasks.filter(task => task.status === 'active').length;
   const draftValues = formValues || {};
+
+  useEffect(() => {
+    if (taskReports.length === 0) {
+      setSelectedReportId(null);
+      return;
+    }
+
+    if (!selectedReportId || !taskReports.some(report => report.id === selectedReportId)) {
+      setSelectedReportId(taskReports[0].id);
+    }
+  }, [selectedReportId, taskReports]);
 
   const openCreateModal = () => {
     const nextDraftTaskId = createDraftTaskId();
@@ -356,7 +360,6 @@ export default function Dashboard() {
     setEditorWorkspaceDir('');
     setEditorUploadedFiles([]);
     setDraftResolveResult(null);
-    setChatContextNotes([]);
     form.resetFields();
     form.setFieldsValue({
       name: '',
@@ -385,7 +388,6 @@ export default function Dashboard() {
     setEditorWorkspaceDir(selectedTask.workspaceDir);
     setEditorUploadedFiles(selectedTask.uploadedFiles || []);
     setDraftResolveResult(null);
-    setChatContextNotes([]);
     form.setFieldsValue({
       name: selectedTask.name,
       inputFilePath: selectedTask.inputFilePath,
@@ -456,14 +458,12 @@ export default function Dashboard() {
         return nextFiles;
       });
       form.setFieldValue('inputFilePath', uploadData.inputFilePath);
-      const note = `已上传 ${file.name}，并设为当前输入文件。`;
-      setChatContextNotes(prev => [...prev, note].slice(-8));
       setModalChatMessages(prev => [
         ...prev,
         {
           id: `assistant-upload-${Date.now()}`,
           role: 'assistant',
-          content: `${note}继续描述任务目标、执行频率或时间即可。`,
+          content: `已上传 ${file.name}，并设为当前输入文件。继续描述任务目标、执行频率或时间即可。`,
           kind: 'text',
         },
       ]);
@@ -477,14 +477,12 @@ export default function Dashboard() {
 
   const handleUseUploadedFile = (file: TaskFile) => {
     form.setFieldValue('inputFilePath', file.path);
-    const note = `已切换到文件 ${file.name}。`;
-    setChatContextNotes(prev => [...prev, note].slice(-8));
     setModalChatMessages(prev => [
       ...prev,
       {
         id: `assistant-file-${Date.now()}`,
         role: 'assistant',
-        content: note,
+        content: `已切换到文件 ${file.name}。`,
         kind: 'text',
       },
     ]);
@@ -574,6 +572,45 @@ export default function Dashboard() {
     }
   };
 
+  const handleDeleteTask = async () => {
+    if (!selectedTask || isDeletingTask) {
+      return;
+    }
+
+    modal.confirm({
+      title: '删除任务',
+      content: `确认删除「${selectedTask.name}」？任务、运行记录和报告关联会一并从当前工作台移除。`,
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: {
+        danger: true,
+        loading: isDeletingTask,
+      },
+      onOk: async () => {
+        try {
+          setIsDeletingTask(true);
+          const deletingId = selectedTask.id;
+          const result = await tasksAPI.delete(deletingId);
+          if (!result.success) {
+            throw new Error(result.errorMessage || '删除任务失败');
+          }
+
+          message.success('任务已删除');
+          if (editingTask?.id === deletingId) {
+            closeTaskModal();
+          }
+
+          await Promise.all([fetchTasks(), fetchRuns(), fetchReports()]);
+        } catch (error) {
+          message.error((error as Error).message || '删除任务失败');
+          throw error;
+        } finally {
+          setIsDeletingTask(false);
+        }
+      },
+    });
+  };
+
   const handleToggleTask = async () => {
     if (!selectedTask) {
       return;
@@ -636,8 +673,6 @@ export default function Dashboard() {
 
   const streamChatReply = async (statusMessageId: string, content: string) => {
     setAssistantContent(statusMessageId, '正在连接对话...', 'status', '处理中');
-    const currentInputFilePath = String(form.getFieldValue('inputFilePath') || '').trim();
-    const currentAbsoluteFilePath = joinWorkspaceFilePath(editorWorkspaceDir, currentInputFilePath);
     const response = await fetch(`${getApiBase()}/web/chat/stream`, {
       method: 'POST',
       headers: {
@@ -649,12 +684,6 @@ export default function Dashboard() {
         messages: [{ role: 'user', content }],
         useTools: true,
         workspaceDir: editorWorkspaceDir || undefined,
-        context: {
-          actualWorkspaceDir: editorWorkspaceDir || undefined,
-          inputFilePath: currentInputFilePath || undefined,
-          absoluteFilePath: currentAbsoluteFilePath || undefined,
-          notes: chatContextNotes.length > 0 ? chatContextNotes : undefined,
-        },
       }),
     });
 
@@ -987,6 +1016,15 @@ export default function Dashboard() {
                   <Button icon={<EditOutlined />} onClick={openEditModal}>
                     编辑配置
                   </Button>
+                  <Button
+                    danger
+                    icon={<DeleteOutlined />}
+                    onClick={handleDeleteTask}
+                    loading={isDeletingTask}
+                    disabled={isDeletingTask}
+                  >
+                    删除任务
+                  </Button>
                 </div>
               </section>
 
@@ -1047,19 +1085,19 @@ export default function Dashboard() {
                   </Card>
 
                   <Card
-                    title="最新报告"
-                    extra={latestReport ? <span className="card-meta-text">{formatDateTime(latestReport.createdAt)}</span> : null}
+                    title={activeReport?.id === latestReport?.id ? '最新报告' : '所选报告'}
+                    extra={activeReport ? <span className="card-meta-text">{formatDateTime(activeReport.createdAt)}</span> : null}
                     className="detail-card detail-card-report"
                   >
-                    {latestReport ? (
+                    {activeReport ? (
                       <div className="report-preview">
                         <div className="report-preview-meta">
-                          <span>关联运行：{latestReport.runId}</span>
-                          <span>生成于 {formatDateTime(latestReport.createdAt)}</span>
+                          <span>关联运行：{activeReport.runId}</span>
+                          <span>生成于 {formatDateTime(activeReport.createdAt)}</span>
                         </div>
                         <div className="report-markdown">
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                            {latestReport.contentMarkdown}
+                            {activeReport.contentMarkdown}
                           </ReactMarkdown>
                         </div>
                       </div>
@@ -1079,7 +1117,16 @@ export default function Dashboard() {
                         {taskActivity.map(({ run, report }) => {
                           const runStatusMeta = getRunStatusMeta(run.status);
                           return (
-                            <div key={run.id} className="activity-row">
+                            <button
+                              key={run.id}
+                              type="button"
+                              className={`activity-row ${report && selectedReportId === report.id ? 'active' : ''} ${report ? 'clickable' : ''}`}
+                              onClick={() => {
+                                if (report) {
+                                  setSelectedReportId(report.id);
+                                }
+                              }}
+                            >
                               <div className={`run-status-dot ${runStatusMeta.tone}`} />
                               <div className="activity-row-content">
                                 <div className="activity-row-top">
@@ -1094,7 +1141,7 @@ export default function Dashboard() {
                                   <span>{report ? report.id : formatDuration(run)}</span>
                                 </div>
                               </div>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>

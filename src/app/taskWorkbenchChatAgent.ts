@@ -51,32 +51,12 @@ export function createTaskWorkbenchChatAgent(): TaskWorkbenchChatAgent {
 export async function buildTaskWorkbenchChatSystemPrompt(params?: {
   overrideSystem?: string;
   /**
-   * 当前聊天关联的文件名快照（由 UI 传入，服务端用于要求回复携带文件名上下文）。
-   */
-  currentFileName?: string;
-  /**
-   * 当前聊天关联的相对文件路径（相对 workspaceDir）。
-   */
-  currentRelativeFilePath?: string;
-  /**
-   * 当前聊天关联的绝对文件路径（后端拼接后的最终定位）。
-   */
-  currentAbsoluteFilePath?: string;
-  /**
-   * UI 侧的上下文备注（例如“已上传文件”、“已切换文件”）。
-   */
-  contextNotes?: string[];
-  /**
    * 当前会话绑定的真实工作空间目录（workspaceDir）。
    * 约束：涉及文件的工具调用必须限定在此目录下。
    */
   workspaceDir?: string;
 }): Promise<string> {
   const overrideSystem = params?.overrideSystem;
-  const currentFileName = params?.currentFileName;
-  const currentRelativeFilePath = params?.currentRelativeFilePath;
-  const currentAbsoluteFilePath = params?.currentAbsoluteFilePath;
-  const contextNotes = Array.isArray(params?.contextNotes) ? params?.contextNotes.filter(Boolean) : [];
   const workspaceDir = params?.workspaceDir;
   const baseSystem = overrideSystem || (await getDefaultPrompt());
   return [
@@ -85,13 +65,8 @@ export async function buildTaskWorkbenchChatSystemPrompt(params?: {
     '你现在是“表格任务工作台”的聊天助手，只帮助用户完成任务创建/编辑时的澄清与结构化。',
     '约束：不要提出写文件、编辑文件的操作建议；只允许读取和检查用户工作目录内的文件。',
     workspaceDir ? `真实工作空间：${workspaceDir}` : '真实工作空间：未知（尚未创建任务工作区）',
-    currentFileName ? `当前文件名：${currentFileName}` : '当前文件名：未知（用户尚未选择文件）',
-    currentRelativeFilePath ? `涉及文件相对路径：${currentRelativeFilePath}` : '涉及文件相对路径：未知',
-    currentAbsoluteFilePath ? `涉及文件绝对路径：${currentAbsoluteFilePath}` : '涉及文件绝对路径：未知',
-    currentFileName ? `涉及文件：${currentFileName}（文件名已确认）` : '涉及文件：未知',
-    contextNotes.length > 0 ? `上下文备注：\n- ${contextNotes.slice(-8).join('\n- ')}` : '上下文备注：无',
-    '回复格式要求：你的每次回复第一行必须包含 `【文件：<当前文件名>】`，用于 UI 展示与后续解析。',
-    '工具调用约束：所有涉及文件的查询都必须基于“真实工作空间”；如果已提供“涉及文件绝对路径”，优先直接使用这个确切绝对路径调用工具；其次再使用“涉及文件相对路径”，不要自行猜测别的路径。',
+    '查找文件时，到 workspaceDir 里面找。',
+    '工具调用约束：有 workspace 时，所有文件查询都基于 workspace 进行。',
     '表格文件约束：Excel 一律优先使用 `excel_inspect`，CSV 一律优先使用 `csv_inspect`；不要用 `read` 直接读取表格二进制文件。',
     `可用工具（最小化）：${TASK_WORKBENCH_CHAT_TOOL_IDS.join(', ')}`,
   ].join('\n');

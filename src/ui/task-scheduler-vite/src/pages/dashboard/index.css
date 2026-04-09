@@ -1,6 +1,21 @@
 .dashboard-shell {
+  display: flex;
   min-height: 100svh;
+  height: 100svh;
   background: transparent;
+  min-width: 0;
+}
+
+.dashboard-shell > .ant-layout-sider,
+.dashboard-shell > .ant-layout-content {
+  min-height: 0;
+}
+
+.task-sidebar .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
 }
 
 .task-sidebar {
@@ -550,12 +565,41 @@
   padding: 16px 18px;
   border-radius: 20px;
   background: rgba(244, 247, 252, 0.84);
+  border: 1px solid rgba(23, 32, 51, 0.06);
 }
 
 .activity-row {
   display: flex;
   align-items: flex-start;
   gap: 16px;
+  width: 100%;
+  text-align: left;
+}
+
+button.activity-row {
+  appearance: none;
+  cursor: default;
+}
+
+button.activity-row.clickable {
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+button.activity-row.clickable:hover,
+button.activity-row.clickable:focus-visible {
+  transform: translateY(-1px);
+  border-color: rgba(15, 118, 110, 0.24);
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.05);
+  outline: none;
+}
+
+button.activity-row.active {
+  border-color: rgba(15, 118, 110, 0.4);
+  background: linear-gradient(180deg, rgba(237, 253, 250, 0.95), rgba(245, 249, 255, 0.94));
 }
 
 .activity-row strong,
