@@ -14,13 +14,14 @@ export interface TaskFile {
 export interface Task {
   id: string;
   name: string;
+  editorSessionId?: string;
   inputFilePath: string;
   workspaceDir: string;
   uploadedFiles: TaskFile[];
   schedule: 'manual' | 'hourly' | 'daily' | 'weekly';
   scheduleConfig?: TaskScheduleConfig;
   scheduleTime?: string;
-  status: 'active' | 'completed' | 'paused' | 'error';
+  status: 'active' | 'paused' | 'error';
   analysisGoal?: string;
   outputFormat: 'markdown' | 'file';
   lastRunAt?: string;

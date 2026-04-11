@@ -1,5 +1,6 @@
 import express, { Request, Response } from 'express';
 import type { LLMRes } from '../agent/llm.js';
+import { getMessages as getAgentMessages, getSession as getAgentSession } from '../agent/session.js';
 import { runTaskWorkbenchChatStream } from './chatStreamService.js';
 import {
   appendChatMessage,
@@ -355,6 +356,24 @@ router.get('/chat/history', async (req: Request, res: Response) => {
   const limit = Number(req.query.limit || 20);
   const messages = await getChatHistory(limit);
   sendSuccess(res, messages, messages.length);
+});
+
+router.get('/chat/session/:sessionId', async (req: Request, res: Response) => {
+  const sessionId = getParam(req.params.sessionId);
+  if (!sessionId) {
+    sendFailure(res, 'sessionId is required', 400);
+    return;
+  }
+
+  const session = await getAgentSession(sessionId);
+  const messages = await getAgentMessages(sessionId, session);
+  sendSuccess(res, {
+    sessionId: session.id,
+    title: session.title || '新会话',
+    messages,
+    createdAt: session.createdAt,
+    updatedAt: session.updatedAt,
+  });
 });
 
 router.get('/chat/settings', async (_req: Request, res: Response) => {

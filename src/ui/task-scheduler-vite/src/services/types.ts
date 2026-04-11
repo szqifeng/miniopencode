@@ -14,13 +14,14 @@ export interface TaskFile {
 export interface Task {
   id: string;
   name: string;
+  editorSessionId?: string;
   inputFilePath: string;
   workspaceDir: string;
   uploadedFiles: TaskFile[];
   schedule: 'manual' | 'hourly' | 'daily' | 'weekly';
   scheduleConfig?: TaskScheduleConfig;
   scheduleTime?: string;
-  status: 'active' | 'completed' | 'paused' | 'error';
+  status: 'active' | 'paused' | 'error';
   analysisGoal?: string;
   outputFormat: 'markdown' | 'file';
   lastRunAt?: string;
@@ -78,6 +79,30 @@ export interface ChatSettings {
   model: string;
   temperature: number;
   maxTokens: number;
+}
+
+export interface AgentSessionPart {
+  type: string;
+  id?: string;
+  content?: string;
+  tool?: string;
+  result?: unknown;
+  args?: Record<string, unknown>;
+}
+
+export interface AgentSessionMessage {
+  id: string;
+  role: 'user' | 'assistant' | 'system';
+  parts: AgentSessionPart[];
+  createdAt: number;
+}
+
+export interface AgentSessionDetail {
+  sessionId: string;
+  title: string;
+  messages: AgentSessionMessage[];
+  createdAt: number;
+  updatedAt: number;
 }
 
 export type ChatStreamMessageRole = 'user' | 'assistant';

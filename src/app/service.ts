@@ -24,7 +24,11 @@ type ToolPayload = Partial<Omit<ToolRecord, 'id' | 'createdAt' | 'updatedAt'>>;
 type KnowledgePayload = Partial<Omit<KnowledgeItem, 'id' | 'createdAt' | 'updatedAt'>>;
 
 function isTaskEnabledStatus(status: Task['status']): boolean {
-  return status === 'active' || status === 'completed';
+  return status === 'active';
+}
+
+function getTaskStatusAfterSuccess(previousStatus: Task['status']): Task['status'] {
+  return previousStatus === 'paused' ? 'paused' : 'active';
 }
 
 function computeNextRunAt(task: Task, from = new Date()): string | undefined {
@@ -154,6 +158,7 @@ export async function createTask(payload: TaskPayload): Promise<Task> {
     const task: Task = {
       id,
       name: payload.name || '',
+      editorSessionId: payload.editorSessionId,
       inputFilePath: payload.inputFilePath || '',
       workspaceDir,
       uploadedFiles: payload.uploadedFiles || [],
@@ -205,6 +210,7 @@ export async function updateTask(id: string, payload: TaskPayload): Promise<Task
     const nextScheduleConfig = payload.scheduleConfig ?? task.scheduleConfig ?? {};
     task.workspaceDir = payload.workspaceDir ?? task.workspaceDir ?? await ensureTaskWorkspace(task.id);
     task.name = payload.name ?? task.name;
+    task.editorSessionId = payload.editorSessionId ?? task.editorSessionId;
     task.inputFilePath = payload.inputFilePath ?? task.inputFilePath;
     task.uploadedFiles = payload.uploadedFiles ?? task.uploadedFiles ?? [];
     task.schedule = nextSchedule;
@@ -313,9 +319,11 @@ export async function executeTask(id: string): Promise<{ run: Run; report: Repor
       savedRun.status = 'success';
       savedRun.reportId = report.id;
       savedRun.finishedAt = finishedAt;
-      task.status = 'completed';
+      task.status = getTaskStatusAfterSuccess(task.status);
       task.lastRunAt = startedAt;
-      task.nextRunAt = computeNextRunAt(task, new Date(finishedAt));
+      task.nextRunAt = isTaskEnabledStatus(task.status)
+        ? computeNextRunAt(task, new Date(finishedAt))
+        : undefined;
       task.updatedAt = finishedAt;
       state.reports.unshift(report);
       return savedRun;
@@ -414,9 +422,11 @@ export async function executeTaskWithStream(
       savedRun.status = 'success';
       savedRun.reportId = report.id;
       savedRun.finishedAt = finishedAt;
-      task.status = 'completed';
+      task.status = getTaskStatusAfterSuccess(task.status);
       task.lastRunAt = startedAt;
-      task.nextRunAt = computeNextRunAt(task, new Date(finishedAt));
+      task.nextRunAt = isTaskEnabledStatus(task.status)
+        ? computeNextRunAt(task, new Date(finishedAt))
+        : undefined;
       task.updatedAt = finishedAt;
       state.reports.unshift(report);
       return savedRun;

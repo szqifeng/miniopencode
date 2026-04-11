@@ -1,6 +1,7 @@
 import type {
   ChatMessage,
   ChatSettings,
+  AgentSessionDetail,
   KnowledgeItem,
   Report,
   Response,
@@ -152,6 +153,7 @@ export const chatAPI = {
   send: (message: string) => 
     fetchJSON<{ reply: string }>('/chat', { method: 'POST', body: JSON.stringify({ message }) }),
   getHistory: (limit = 20) => fetchJSON<ChatMessage[]>(`/chat/history?limit=${limit}`),
+  getSession: (sessionId: string) => fetchJSON<AgentSessionDetail>(`/chat/session/${sessionId}`),
   getSettings: () => fetchJSON<ChatSettings>('/chat/settings'),
   updateSettings: (settings: ChatSettings) => 
     fetchJSON<ChatSettings>('/chat/settings', { method: 'PUT', body: JSON.stringify(settings) }),

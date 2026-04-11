@@ -120,10 +120,14 @@ function normalizeTask(task: Task): Task {
     legacySchedule === 'once' ? 'manual' : (legacySchedule || 'manual')
   ) as Task['schedule'];
   const scheduleConfig = task.scheduleConfig || {};
+  const legacyStatus = (task as { status?: string }).status;
+  const normalizedStatus = legacyStatus === 'completed' ? 'active' : (legacyStatus || 'active');
 
   return {
     ...task,
     schedule: normalizedSchedule,
+    status: normalizedStatus as Task['status'],
+    editorSessionId: task.editorSessionId,
     workspaceDir: task.workspaceDir || getTaskWorkspaceDir(task.id),
     uploadedFiles: task.uploadedFiles || [],
     scheduleConfig,

@@ -81,6 +81,38 @@ npm run dev
 
 服务启动后访问 `http://localhost:3000`
 
+## 一键安装
+
+项目支持生成可上传到 OSS 的 Node 安装包：
+
+```bash
+npm run dist:node
+```
+
+执行后会生成：
+
+- `release/node-app`
+- `release/miniopencode-node-app.tar.gz`
+- `release/install.sh`
+
+上传 `miniopencode-node-app.tar.gz` 和 `install.sh` 到 OSS 后，用户可执行：
+
+```bash
+curl -fsSL https://your-oss-domain/install.sh | bash
+```
+
+安装完成后，用户执行：
+
+```bash
+~/.local/bin/miniopencode
+```
+
+首次启动前需要编辑：
+
+```bash
+~/.miniopencode/current/.env
+```
+
 ## 配置说明
 
 启动脚本需在 `.env` 文件中配置以下环境变量：

@@ -10,6 +10,7 @@
     "build:server": "tsc -p tsconfig.json --outDir dist-server --declaration false --sourceMap false",
     "build:ui": "npm --prefix src/ui/task-scheduler-vite run build",
     "build:desktop": "npm run build:server && npm run build:ui",
+    "dist:node": "npm run build:server && npm run build:ui && node scripts/build-node-release.mjs",
     "desktop:preview": "npm run build:desktop && electron desktop/main.mjs",
     "desktop:dev": "npm run build:server && VITE_DEV_SERVER_URL=http://127.0.0.1:5173 electron desktop/main.mjs",
     "dist:mac": "npm run build:desktop && electron-builder --mac",

@@ -1,5 +1,6 @@
 import express from 'express';
-import { appendChatMessage, createKnowledge, createTask, createTool, deleteKnowledge, deleteTask, deleteTool, disableTask, enableTask, executeTask, executeTaskWithStream, getChatHistory, getChatSettings, getKnowledgeById, getReportById, getRunById, getTaskById, getToolById, listKnowledge, listReports, listRuns, listTaskReports, listTaskRuns, listTasks, listTools, resolveTaskDraftInput, updateChatSettings, updateKnowledge, updateTask, updateTool } from './service.js';
+import { runTaskWorkbenchChatStream } from './chatStreamService.js';
+import { appendChatMessage, createKnowledge, createTask, createTool, deleteKnowledge, deleteTask, deleteTool, disableTask, enableTask, executeTask, executeTaskWithStream, getChatHistory, getChatSettings, getKnowledgeById, getReportById, getRunById, getTaskById, getToolById, listKnowledge, listReports, listRuns, listTaskReports, listTaskRuns, listTasks, listTools, resolveTaskDraftFromSessionId, updateChatSettings, updateKnowledge, updateTask, updateTool } from './service.js';
 import { saveTaskUpload } from './taskWorkspace.js';
 const router = express.Router();
 function getParam(value) {
@@ -25,7 +26,14 @@ function setupSSE(res) {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
+}
+function flushSSE(res) {
     res.flushHeaders();
+}
+function setupChatStreamSSE(res, sessionId) {
+    setupSSE(res);
+    res.setHeader('X-Session-Id', sessionId);
+    flushSSE(res);
 }
 router.get('/tasks', async (_req, res) => {
     const tasks = await listTasks();
@@ -50,10 +58,10 @@ router.post('/tasks', async (req, res) => {
 });
 router.post('/tasks/draft/resolve', async (req, res) => {
     try {
-        const result = await resolveTaskDraftInput({
-            messages: Array.isArray(req.body?.messages) ? req.body.messages : [],
-            draft: typeof req.body?.draft === 'object' && req.body?.draft ? req.body.draft : {}
-        });
+        // 约定：先调用 `/api/web/chat/stream` 完成会话消息写入，再调用本接口触发草稿解析。
+        // 本接口只接收 sessionId，具体对话内容从 session 存储中读取。
+        const sessionId = typeof req.body?.sessionId === 'string' ? req.body.sessionId : '';
+        const result = await resolveTaskDraftFromSessionId(sessionId);
         sendSuccess(res, result);
     }
     catch (error) {
@@ -122,6 +130,7 @@ router.post('/tasks/:id/run', async (req, res) => {
 router.post('/tasks/:id/run/stream', async (req, res) => {
     try {
         setupSSE(res);
+        flushSSE(res);
         const llmRes = {
             write: (data) => res.write(data),
             end: () => {
@@ -290,6 +299,45 @@ router.get('/chat/settings', async (_req, res) => {
 router.put('/chat/settings', async (req, res) => {
     const settings = await updateChatSettings(req.body || {});
     sendSuccess(res, settings);
+});
+router.post('/web/chat/stream', async (req, res) => {
+    try {
+        const sessionId = typeof req.body?.sessionId === 'string' && req.body.sessionId
+            ? req.body.sessionId
+            : `session_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        const messages = Array.isArray(req.body?.messages) ? req.body.messages : [];
+        const workspaceDir = typeof req.body?.workspaceDir === 'string' ? req.body.workspaceDir : undefined;
+        const system = typeof req.body?.system === 'string' ? req.body.system : undefined;
+        const useTools = req.body?.useTools !== false;
+        if (messages.length === 0) {
+            sendFailure(res, 'messages is required', 400);
+            return;
+        }
+        setupChatStreamSSE(res, sessionId);
+        const llmRes = {
+            write: (data) => res.write(data),
+            end: () => res.end(),
+        };
+        // DDD: API 层只处理 HTTP/SSE 细节；编排逻辑由 app application service 承担。
+        await runTaskWorkbenchChatStream({
+            sessionId,
+            messages,
+            workspaceDir,
+            system,
+            useTools,
+            llmRes,
+        });
+    }
+    catch (error) {
+        console.error('app chat stream error:', error);
+        if (res.headersSent) {
+            res.write(`data: ${JSON.stringify({ type: 'error', error: error.message || 'chat stream failed' })}\n\n`);
+            res.write('data: [DONE]\n\n');
+            res.end();
+            return;
+        }
+        sendFailure(res, error.message || 'chat stream failed', 502);
+    }
 });
 export function setupAppApi(app) {
     app.use('/api', router);

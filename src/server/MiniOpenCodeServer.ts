@@ -1,4 +1,6 @@
 import type { Express } from 'express';
+import fs from 'node:fs';
+import path from 'node:path';
 
 interface Module {
   setup?: (app: Express) => void;
@@ -45,6 +47,8 @@ export class MiniOpenCodeServer {
       console.log(`✓ Module loaded: ${name}`);
     }
 
+    this.configureStaticUi(express);
+
     if (this.app) {
       this.app.use((err: Error, _req: unknown, res: unknown, _next: unknown) => {
         console.error('Error:', err);
@@ -60,9 +64,10 @@ export class MiniOpenCodeServer {
         this.server = this.app.listen(this.port, () => {
           const address = this.server?.address();
           if (address && typeof address === 'object') {
-            this.port = address.port;
+          this.port = address.port;
           }
           console.log(`🚀 MiniOpenCode server running on http://localhost:${this.port}`);
+          console.log(`🖥️  MiniOpenCode UI available at http://localhost:${this.port}`);
           console.log(`📋 API Key: ${process.env.API_KEY ? 'configured' : 'NOT SET'}`);
           console.log(`🤖 AI Provider: ${process.env.MINIMAX_CN_API_KEY ? 'configured' : 'NOT SET'}`);
           resolve();
@@ -79,6 +84,39 @@ export class MiniOpenCodeServer {
 
   getPort(): number {
     return this.port;
+  }
+
+  private configureStaticUi(expressModule: { static: (root: string) => unknown }): void {
+    if (!this.app) {
+      return;
+    }
+
+    const uiDistPath = this.resolveUiDistPath();
+    if (!uiDistPath) {
+      console.warn('⚠️ UI dist not found. Web UI hosting is disabled for this run.');
+      return;
+    }
+
+    (this.app as any).use('/', expressModule.static(uiDistPath));
+    (this.app as any).get(/^(?!\/api|\/health).*/, (_req: unknown, res: { sendFile: (filePath: string) => void }) => {
+      res.sendFile(path.join(uiDistPath, 'index.html'));
+    });
+  }
+
+  private resolveUiDistPath(): string | null {
+    const candidates = [
+      process.env.UI_DIST_PATH,
+      path.resolve(process.cwd(), 'src/ui/task-scheduler-vite/dist'),
+      path.resolve(process.cwd(), 'ui-dist'),
+    ].filter(Boolean) as string[];
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(path.join(candidate, 'index.html'))) {
+        return candidate;
+      }
+    }
+
+    return null;
   }
 }
 

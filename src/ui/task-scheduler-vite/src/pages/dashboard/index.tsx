@@ -30,8 +30,8 @@ import {
 } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { Run, Report, Task, TaskDraftResolveResult, TaskFile } from '../../services/types';
-import { getApiBase, reportsAPI, runsAPI, tasksAPI } from '../../services/api';
+import type { AgentSessionMessage, Run, Report, Task, TaskDraftResolveResult, TaskFile } from '../../services/types';
+import { chatAPI, getApiBase, reportsAPI, runsAPI, tasksAPI } from '../../services/api';
 import ReportExportDocument from './components/ReportExportDocument.tsx';
 
 const { Sider, Content } = Layout;
@@ -185,6 +185,37 @@ function getFileName(path?: string) {
 
 function toExcerpt(markdown: string) {
   return markdown.replace(/[#>*`-]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 110);
+}
+
+function toModalChatMessages(messages: AgentSessionMessage[]): ModalChatMessage[] {
+  const nextMessages: ModalChatMessage[] = [];
+
+  for (const message of messages) {
+    if (message.role !== 'user' && message.role !== 'assistant') {
+      continue;
+    }
+
+    const content = message.parts
+      .filter(part => part.type === 'text' && typeof part.content === 'string')
+      .map(part => part.content || '')
+      .join('\n\n')
+      .trim();
+
+    if (!content) {
+      continue;
+    }
+
+    nextMessages.push({
+      id: message.id,
+      role: message.role,
+      content,
+      kind: 'text',
+    });
+  }
+
+  return nextMessages.length > 0
+    ? nextMessages
+    : [{ id: 'assistant-init', role: 'assistant', content: initialAssistantMessage, kind: 'text' }];
 }
 
 export default function Dashboard() {
@@ -385,8 +416,9 @@ export default function Dashboard() {
       return;
     }
 
+    const nextSessionId = selectedTask.editorSessionId || `task_editor_${selectedTask.id}`;
     setEditingTask(selectedTask);
-    setChatSessionId(`task_editor_${selectedTask.id}_${Date.now()}`);
+    setChatSessionId(nextSessionId);
     setEditorTaskId(selectedTask.id);
     setEditorWorkspaceDir(selectedTask.workspaceDir);
     setEditorUploadedFiles(selectedTask.uploadedFiles || []);
@@ -400,14 +432,7 @@ export default function Dashboard() {
       status: selectedTask.status,
       outputFormat: selectedTask.outputFormat,
     });
-    setModalChatMessages([
-      {
-        id: 'assistant-edit',
-        role: 'assistant',
-        content: `当前正在编辑「${selectedTask.name}」。继续描述你想修改的文件、频率或报告目标即可。`,
-        kind: 'text',
-      },
-    ]);
+    void loadTaskEditorSession(nextSessionId, selectedTask.name);
     setModalChatInput('');
     setTaskModalVisible(true);
   };
@@ -517,6 +542,7 @@ export default function Dashboard() {
 
       const payload: Partial<Task> = {
         name: values.name,
+        editorSessionId: chatSessionId,
         inputFilePath: values.inputFilePath,
         schedule: 'manual',
         scheduleConfig: {},
@@ -880,6 +906,25 @@ export default function Dashboard() {
       return result.data;
     } finally {
       setIsDraftPreviewLoading(false);
+    }
+  };
+
+  const loadTaskEditorSession = async (sessionId: string, taskName: string) => {
+    try {
+      const result = await chatAPI.getSession(sessionId);
+      if (!result.success || !result.data) {
+        throw new Error(result.errorMessage || '读取编辑会话失败');
+      }
+      setModalChatMessages(toModalChatMessages(result.data.messages));
+    } catch {
+      setModalChatMessages([
+        {
+          id: 'assistant-edit',
+          role: 'assistant',
+          content: `当前正在编辑「${taskName}」。继续描述你想修改的文件、频率或报告目标即可。`,
+          kind: 'text',
+        },
+      ]);
     }
   };
 
@@ -1643,7 +1688,6 @@ export default function Dashboard() {
                     options={[
                       { value: 'active', label: '运行中' },
                       { value: 'paused', label: '已暂停' },
-                      { value: 'error', label: '异常' },
                     ]}
                   />
                 </Form.Item>

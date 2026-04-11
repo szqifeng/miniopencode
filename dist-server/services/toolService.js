@@ -12,11 +12,47 @@ import * as XLSX from 'xlsx';
 import { getCurrentSessionId, getCurrentWorkspaceDir } from '../agent/process.js';
 import { getDataSubdir } from '../utils/paths.js';
 function resolveToolPath(targetPath) {
+    const workspaceDir = getCurrentWorkspaceDir();
+    // 当设置了 workspaceDir 时，所有文件相关工具必须限制在 workspace 内工作：
+    // - 允许传相对路径（基于 workspaceDir 解析）
+    // - 允许传绝对路径，但必须仍然落在 workspaceDir 之下
+    // - 任何越界（例如 ../ 或指向其他目录）直接拒绝
+    if (workspaceDir) {
+        const base = path.resolve(workspaceDir);
+        const candidate = path.isAbsolute(targetPath)
+            ? path.resolve(targetPath)
+            : path.resolve(base, targetPath);
+        if (candidate === base || candidate.startsWith(`${base}${path.sep}`)) {
+            return candidate;
+        }
+        throw new Error(`路径越界：${targetPath} 不在当前 workspace 内。workspaceDir=${base}`);
+    }
+    // 未设置 workspaceDir 时（例如纯聊天/无文件上下文），沿用旧行为：相对路径基于进程 cwd。
     if (path.isAbsolute(targetPath)) {
         return targetPath;
     }
+    return path.resolve(process.cwd(), targetPath);
+}
+function resolveWorkspacePath(targetPath, options) {
     const workspaceDir = getCurrentWorkspaceDir();
-    return path.resolve(workspaceDir || process.cwd(), targetPath);
+    if (!workspaceDir) {
+        return resolveToolPath(targetPath);
+    }
+    const base = path.resolve(workspaceDir);
+    const raw = String(targetPath || '');
+    const isBasename = !path.isAbsolute(raw) &&
+        !raw.includes('/') &&
+        !raw.includes('\\');
+    const preferUploads = Boolean(options?.preferUploadsForBasename);
+    const candidate = path.isAbsolute(raw)
+        ? path.resolve(raw)
+        : isBasename && preferUploads
+            ? path.resolve(base, 'uploads', raw)
+            : path.resolve(base, raw);
+    if (candidate === base || candidate.startsWith(`${base}${path.sep}`)) {
+        return candidate;
+    }
+    throw new Error(`路径越界：${raw} 不在当前 workspace 内。workspaceDir=${base}`);
 }
 function parseStructuredRows(rowsJson) {
     const parsed = JSON.parse(rowsJson);
@@ -97,7 +133,7 @@ const readTool = {
     }),
     async execute({ path: targetPath }) {
         try {
-            const resolvedPath = resolveToolPath(targetPath);
+            const resolvedPath = resolveWorkspacePath(targetPath, { preferUploadsForBasename: true });
             const content = await fs.readFile(resolvedPath, 'utf-8');
             return { output: content, title: `文件: ${resolvedPath}`, metadata: { path: resolvedPath } };
         }
@@ -175,7 +211,7 @@ const excelInspectTool = {
     }),
     async execute({ path: targetPath, sheet, maxRows = 20 }) {
         try {
-            const resolvedPath = resolveToolPath(targetPath);
+            const resolvedPath = resolveWorkspacePath(targetPath, { preferUploadsForBasename: true });
             const workbook = XLSX.read(await fs.readFile(resolvedPath), { type: 'buffer', cellDates: true });
             const selectedSheet = sheet || workbook.SheetNames[0];
             if (!selectedSheet || !workbook.Sheets[selectedSheet]) {
@@ -282,7 +318,7 @@ const csvInspectTool = {
     }),
     async execute({ path: targetPath, delimiter = ',', maxRows = 20 }) {
         try {
-            const resolvedPath = resolveToolPath(targetPath);
+            const resolvedPath = resolveWorkspacePath(targetPath, { preferUploadsForBasename: true });
             const content = await fs.readFile(resolvedPath, 'utf-8');
             const rows = parseCsvContent(content, delimiter);
             const previewRows = rows.slice(0, Math.max(1, Math.min(maxRows, 100)));
